@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#2F5D50">
+    <meta name="description" content="Catalogo prodotti e prezzi">
+    <title>Dolcevolta · Catalogo prodotti</title>
+    <link rel="stylesheet" href="style.css">
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <main id="login-view" class="login-view">
+      <section class="login-card" aria-labelledby="login-title">
+        <p class="eyebrow">GESTIONE CATALOGO</p>
+        <h1 id="login-title">Dolcevolta</h1>
+        <p class="muted">Accedi per consultare e aggiornare i prodotti.</p>
+        <form id="login-form">
+          <label for="login-email">Email</label>
+          <input id="login-email" name="email" type="email" autocomplete="username" required>
+          <label for="login-password">Password</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="button button-primary button-wide" type="submit">Accedi</button>
+        </form>
+        <p id="login-message" class="message" role="alert" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <div id="app-view" hidden>
+      <header class="topbar">
+        <div class="topbar-inner">
+          <a class="brand" href="#" aria-label="Catalogo Dolcevolta">Dolcevolta</a>
+          <div class="search-area" id="search-area">
+            <label class="visually-hidden" for="search-input">Cerca per nome o codice</label>
+            <input id="search-input" type="search" placeholder="Cerca nome o codice..." autocomplete="off" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">
+            <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+          </div>
+          <button id="logout-button" class="button button-quiet" type="button">Esci</button>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div id="connection-message" class="connection-message" role="status" aria-live="polite"></div>
+        <section class="toolbar" aria-label="Strumenti catalogo">
+          <div>
+            <h1>Catalogo prodotti</h1>
+            <p id="product-count" class="muted">Caricamento prodotti...</p>
+          </div>
+          <div class="toolbar-actions">
+            <label class="visually-hidden" for="category-filter">Filtra per categoria</label>
+            <select id="category-filter">
+              <option value="">Tutte le categorie</option>
+            </select>
+            <button id="add-product-button" class="button button-primary" type="button">+ Nuovo prodotto</button>
+          </div>
+        </section>
+
+        <section class="import-panel" aria-label="Importazione prodotti">
+          <div class="import-copy">
+            <strong>Importa il catalogo iniziale</strong>
+            <span class="muted">Puoi ripetere l’importazione senza creare duplicati.</span>
+          </div>
+          <div class="import-actions">
+            <input id="json-file" type="file" accept="application/json,.json" hidden>
+            <button id="import-button" class="button button-secondary" type="button">Importa da file JSON</button>
+            <span id="import-progress" class="muted" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+
+        <p id="app-message" class="message" role="status" aria-live="polite"></p>
+        <section id="product-list" class="product-grid" aria-label="Elenco prodotti"></section>
+      </main>
+    </div>
+
+    <dialog id="product-dialog" class="dialog">
+      <form id="product-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">SCHEDA PRODOTTO</p>
+            <h2 id="product-form-title">Nuovo prodotto</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-product aria-label="Chiudi">×</button>
+        </div>
+        <p id="product-form-message" class="message" role="alert" aria-live="assertive"></p>
+        <input id="product-id" name="id" type="hidden">
+        <label for="product-name">Nome <span class="required">*</span></label>
+        <input id="product-name" name="nome" type="text" maxlength="180" required>
+        <label for="product-code">Codice <span class="required">*</span></label>
+        <input id="product-code" name="codice" type="text" maxlength="80" required>
+        <div class="form-row">
+          <div>
+            <label for="product-price">Prezzo €</label>
+            <input id="product-price" name="prezzo" type="number" min="0" step="0.01" inputmode="decimal">
+          </div>
+          <div>
+            <label for="product-alt-price">Prezzo alt. €</label>
+            <input id="product-alt-price" name="prezzoAlt" type="number" min="0" step="0.01" inputmode="decimal">
+          </div>
+        </div>
+        <label for="product-package">Confezione</label>
+        <input id="product-package" name="confezione" type="text" maxlength="180">
+        <label for="product-category">Categoria</label>
+        <input id="product-category" name="categoria" type="text" maxlength="100" list="category-options">
+        <datalist id="category-options"></datalist>
+        <label for="product-features">Caratteristiche</label>
+        <textarea id="product-features" name="caratteristiche" rows="3" maxlength="2000"></textarea>
+        <label for="product-photo">Foto</label>
+        <input id="product-photo" name="foto" type="file" accept="image/*" capture="environment">
+        <p class="muted photo-help">La foto viene ridimensionata prima del caricamento.</p>
+        <div class="photo-preview-wrap">
+          <img id="photo-preview" class="photo-preview" alt="Anteprima foto prodotto" hidden>
+          <span id="photo-placeholder" class="photo-placeholder">Nessuna foto selezionata</span>
+        </div>
+        <p id="photo-status" class="muted" role="status" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button class="button button-secondary" type="button" data-close-product>Annulla</button>
+          <button id="save-product-button" class="button button-primary" type="submit">Salva prodotto</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="detail-dialog" class="dialog">
+      <section class="dialog-card detail-card" aria-labelledby="detail-title">
+        <div class="dialog-heading">
+          <p class="eyebrow">DETTAGLIO PRODOTTO</p>
+          <button class="icon-button" type="button" data-close-detail aria-label="Chiudi">×</button>
+        </div>
+        <div id="detail-content"></div>
+      </section>
+    </dialog>
+  </body>
+</html>
