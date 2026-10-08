@@ -175,7 +175,10 @@ async function caricaPermessiCatalogo(uid) {
     console.error("Errore durante la verifica dei permessi amministratore:", errore);
     if (utenteCorrente?.uid !== uid) return;
     impostaPermessiCatalogo(false);
-    mostraMessaggio(elementi.appMessage, "Non è stato possibile verificare i permessi. Catalogo in sola lettura.");
+    const dettaglio = errore?.code === "permission-denied"
+      ? `Firestore ha negato la lettura dei permessi. Verifica che le regole siano pubblicate nel database (default) del progetto peppeprogetto-8afc8 e che il documento admins abbia come ID questo UID esatto: ${uid}.`
+      : "Verifica la connessione e riprova.";
+    mostraMessaggio(elementi.appMessage, `Non è stato possibile verificare i permessi: ${dettaglio} Catalogo in sola lettura.`);
   }
 }
 

@@ -48,6 +48,7 @@ Per provare il sito localmente, avvialo da un server statico (non aprire `index.
 ### Problemi comuni
 
 - **`permission-denied`**: verifica di aver effettuato l’accesso e di aver pubblicato le regole di `firestore.rules` nel progetto corretto.
+- **Permessi amministratore non verificabili**: il sito mostra l’UID dell’account attualmente autenticato. In Authentication > Utenti copia l’UID dello stesso account e verifica che coincida esattamente con l’ID del documento sotto `admins`, che il campo `abilitato` sia Boolean `true` e che le regole aggiornate siano pubblicate nella scheda del database `(default)` del progetto `peppeprogetto-8afc8`.
 - **Dominio non autorizzato**: aggiungi il dominio effettivo del sito in **Authentication > Impostazioni > Domini autorizzati**.
 - **Foto che non si carica**: verifica Cloud name e preset unsigned in `app.js`, le impostazioni del preset Cloudinary e la connessione. Le foto vengono ridimensionate in JPEG e devono restare sotto 2 MB.
 - **Cache offline**: Firestore mantiene una cache locale consultabile con connessione assente o debole. La sincronizzazione delle modifiche richiede comunque una connessione; non cancellare i dati del browser se vuoi mantenere la cache.
