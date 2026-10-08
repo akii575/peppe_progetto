@@ -13,6 +13,23 @@ const firebaseConfig = {
 const CLOUDINARY_CLOUD_NAME = "lgpus1ka";
 const CLOUDINARY_UPLOAD_PRESET = "peppe_progetto";
 const CLOUDINARY_UPLOAD_TIMEOUT_MS = 45_000;
+const DDT_SENDER_STORAGE_KEY = "dolcevolta-ddt-emittente";
+const DDT_SENDER_FIELD_NAMES = [
+  "mittente-ragione-sociale",
+  "mittente-partita-iva",
+  "mittente-codice-fiscale",
+  "mittente-via",
+  "mittente-cap",
+  "mittente-comune",
+  "mittente-provincia",
+  "mittente-nazione",
+  "mittente-telefono",
+  "mittente-email",
+  "partenza-via",
+  "partenza-cap",
+  "partenza-comune",
+  "partenza-provincia"
+];
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -31,6 +48,7 @@ import {
   onSnapshot,
   persistentLocalCache,
   persistentMultipleTabManager,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -66,6 +84,7 @@ const elementi = {
   catalogPage: document.getElementById("catalog-page"),
   cartPage: document.getElementById("cart-page"),
   orderSummaryPage: document.getElementById("order-summary-page"),
+  orderSummaryMessage: document.getElementById("order-summary-message"),
   ordersPage: document.getElementById("orders-page"),
   ordersBackToCatalogButton: document.getElementById("orders-back-to-catalog"),
   ordersList: document.getElementById("orders-list"),
@@ -77,6 +96,7 @@ const elementi = {
   orderEditId: document.getElementById("order-edit-id"),
   orderEditTitle: document.getElementById("order-edit-title"),
   orderEditMessage: document.getElementById("order-edit-message"),
+  orderEditDdtNote: document.getElementById("order-edit-ddt-note"),
   orderEditItems: document.getElementById("order-edit-items"),
   orderAddProductSelect: document.getElementById("order-add-product-select"),
   orderAddProductButton: document.getElementById("order-add-product-button"),
@@ -98,8 +118,18 @@ const elementi = {
   checkoutForm: document.getElementById("checkout-form"),
   checkoutMessage: document.getElementById("checkout-message"),
   confirmOrderButton: document.getElementById("confirm-order-button"),
+  ddtDate: document.getElementById("ddt-date"),
+  ddtGoodsLines: document.getElementById("ddt-goods-lines"),
+  senderDepartureToggle: document.getElementById("sender-different-departure"),
+  senderDepartureFields: document.getElementById("sender-departure-fields"),
+  customerDeliveryToggle: document.getElementById("customer-different-delivery"),
+  customerDeliveryFields: document.getElementById("customer-delivery-fields"),
+  transportStart: document.getElementById("transport-start"),
+  carrierType: document.getElementById("carrier-type"),
+  thirdPartyCarrierFields: document.getElementById("third-party-carrier-fields"),
   orderNumber: document.getElementById("order-number"),
   orderDate: document.getElementById("order-date"),
+  orderDdtNumber: document.getElementById("order-ddt-number"),
   orderCustomer: document.getElementById("order-customer"),
   orderItems: document.getElementById("order-items"),
   orderTotal: document.getElementById("order-total"),
@@ -774,6 +804,7 @@ function apriModificaOrdine(ordine) {
   mostraMessaggio(elementi.orderEditMessage, "");
   elementi.orderEditId.value = ordine.id;
   elementi.orderEditTitle.textContent = `Modifica ${ordine.numero || "ordine"}`;
+  elementi.orderEditDdtNote.hidden = !ordine.ddt;
   const destinatario = ordine.destinatario || {};
   [
     ["edit-customer-name", destinatario.nome],
@@ -864,18 +895,22 @@ async function salvaModificheOrdine(evento) {
     subtotale: Math.round(articolo.prezzo * articolo.quantita * 100) / 100
   }));
   const totale = Math.round(items.reduce((somma, articolo) => somma + articolo.subtotale, 0) * 100) / 100;
+  const aggiornamento = {
+    destinatario,
+    items,
+    totale,
+    stato: statoOrdine(ordine),
+    aggiornatoIl: serverTimestamp()
+  };
   elementi.saveOrderButton.disabled = true;
   mostraMessaggio(elementi.orderEditMessage, "Salvataggio modifiche...", "avviso");
   try {
-    await updateDoc(doc(db, "ordini", ordine.id), {
-      destinatario,
-      items,
-      totale,
-      stato: statoOrdine(ordine),
-      aggiornatoIl: serverTimestamp()
-    });
+    await updateDoc(doc(db, "ordini", ordine.id), aggiornamento);
     elementi.orderEditDialog.close();
-    mostraMessaggio(elementi.ordersMessage, `Ordine ${ordine.numero || ""} aggiornato.`, "successo");
+    const messaggio = ordine.ddt
+      ? `Ordine ${ordine.numero || ""} aggiornato. Il DDT numerato resta invariato come documento emesso.`
+      : `Ordine ${ordine.numero || ""} aggiornato.`;
+    mostraMessaggio(elementi.ordersMessage, messaggio, "successo");
   } catch (errore) {
     console.error("Errore durante la modifica dell'ordine:", errore);
     mostraMessaggio(elementi.orderEditMessage, erroreOperazioneOrdine(errore));
@@ -975,6 +1010,301 @@ function raccogliRigheOrdine() {
   });
 }
 
+function aggiornaCampiCondizionaliDdt() {
+  elementi.senderDepartureFields.hidden = !elementi.senderDepartureToggle.checked;
+  elementi.senderDepartureFields.disabled = !elementi.senderDepartureToggle.checked;
+  elementi.customerDeliveryFields.hidden = !elementi.customerDeliveryToggle.checked;
+  elementi.customerDeliveryFields.disabled = !elementi.customerDeliveryToggle.checked;
+  const vettoreTerzo = elementi.carrierType.value === "Vettore Terzo";
+  elementi.thirdPartyCarrierFields.hidden = !vettoreTerzo;
+  elementi.thirdPartyCarrierFields.disabled = !vettoreTerzo;
+}
+
+function ripristinaMittenteDdt() {
+  try {
+    const salvati = JSON.parse(localStorage.getItem(DDT_SENDER_STORAGE_KEY) || "null");
+    if (!salvati || typeof salvati !== "object") return;
+    DDT_SENDER_FIELD_NAMES.forEach((nome) => {
+      const campo = elementi.checkoutForm.elements.namedItem(nome);
+      if (campo && typeof salvati[nome] === "string") campo.value = salvati[nome];
+    });
+    elementi.senderDepartureToggle.checked = salvati.partenzaDiversa === true;
+  } catch (errore) {
+    console.warn("Non è stato possibile ripristinare i dati mittente salvati sul dispositivo:", errore);
+  }
+}
+
+function salvaMittenteDdt(modulo) {
+  const dati = Object.fromEntries(
+    DDT_SENDER_FIELD_NAMES.map((nome) => [nome, String(modulo.get(nome) || "").trim()])
+  );
+  dati.partenzaDiversa = modulo.get("mittente-partenza-diversa") === "on";
+  try {
+    localStorage.setItem(DDT_SENDER_STORAGE_KEY, JSON.stringify(dati));
+  } catch (errore) {
+    console.warn("Non è stato possibile salvare i dati mittente sul dispositivo:", errore);
+  }
+}
+
+function creaCampoDdt(contenitore, configurazione) {
+  const wrapper = document.createElement("div");
+  const label = document.createElement("label");
+  label.htmlFor = configurazione.id;
+  label.textContent = configurazione.label;
+  if (configurazione.required) {
+    const obbligatorio = document.createElement("span");
+    obbligatorio.className = "required";
+    obbligatorio.textContent = " *";
+    label.append(obbligatorio);
+  }
+
+  const campo = configurazione.options
+    ? document.createElement("select")
+    : document.createElement("input");
+  campo.id = configurazione.id;
+  campo.name = configurazione.id;
+  if (campo instanceof HTMLInputElement) campo.type = configurazione.type || "text";
+  if (configurazione.options) {
+    configurazione.options.forEach(([valore, etichetta]) => {
+      const opzione = new Option(etichetta, valore);
+      if (valore === configurazione.value) opzione.selected = true;
+      campo.append(opzione);
+    });
+  } else {
+    campo.value = configurazione.value ?? "";
+  }
+  if (configurazione.required) campo.required = true;
+  if (configurazione.maxLength) campo.maxLength = configurazione.maxLength;
+  if (configurazione.min !== undefined) campo.min = String(configurazione.min);
+  if (configurazione.step !== undefined) campo.step = String(configurazione.step);
+  wrapper.append(label, campo);
+  contenitore.append(wrapper);
+  return campo;
+}
+
+function mostraRigheMerceDdt(righe) {
+  const contenitore = elementi.ddtGoodsLines;
+  contenitore.replaceChildren();
+  righe.forEach((articolo, indice) => {
+    const riga = document.createElement("fieldset");
+    riga.className = "ddt-goods-line";
+    const titolo = document.createElement("legend");
+    titolo.textContent = `Riga ${indice + 1}: ${articolo.nome}`;
+    riga.append(titolo);
+
+    creaCampoDdt(riga, {
+      id: `ddt-item-description-${indice}`,
+      label: "Descrizione del bene",
+      value: `${articolo.nome}${articolo.confezione ? ` (${articolo.confezione})` : ""}`,
+      required: true,
+      maxLength: 180
+    });
+    const codiceQuantita = document.createElement("div");
+    codiceQuantita.className = "form-row";
+    creaCampoDdt(codiceQuantita, {
+      id: `ddt-item-code-${indice}`,
+      label: "Codice articolo",
+      value: articolo.codice,
+      maxLength: 60
+    });
+    creaCampoDdt(codiceQuantita, {
+      id: `ddt-item-quantity-${indice}`,
+      label: "Quantità spedita",
+      type: "number",
+      value: articolo.quantita,
+      required: true,
+      min: 0.01,
+      step: 0.01
+    });
+    riga.append(codiceQuantita);
+
+    const unitaLotto = document.createElement("div");
+    unitaLotto.className = "form-row";
+    creaCampoDdt(unitaLotto, {
+      id: `ddt-item-unit-${indice}`,
+      label: "Unità di misura",
+      value: "PZ",
+      required: true,
+      options: [["PZ", "PZ"], ["KG", "KG"], ["M", "M"], ["L", "L"], ["NR", "NR"]]
+    });
+    creaCampoDdt(unitaLotto, {
+      id: `ddt-item-lot-${indice}`,
+      label: "Lotto",
+      maxLength: 60
+    });
+    riga.append(unitaLotto);
+
+    const scadenzaSerie = document.createElement("div");
+    scadenzaSerie.className = "form-row";
+    creaCampoDdt(scadenzaSerie, {
+      id: `ddt-item-expiry-${indice}`,
+      label: "Data scadenza",
+      type: "date"
+    });
+    creaCampoDdt(scadenzaSerie, {
+      id: `ddt-item-serial-${indice}`,
+      label: "Numero di serie",
+      maxLength: 100
+    });
+    riga.append(scadenzaSerie);
+    contenitore.append(riga);
+  });
+}
+
+function valoreModulo(modulo, nome) {
+  return String(modulo.get(nome) || "").trim();
+}
+
+function creaDatiDdt(modulo, righeOrdine) {
+  const indirizzoSedeMittente = {
+    via: valoreModulo(modulo, "mittente-via"),
+    cap: valoreModulo(modulo, "mittente-cap"),
+    comune: valoreModulo(modulo, "mittente-comune"),
+    provincia: valoreModulo(modulo, "mittente-provincia"),
+    nazione: valoreModulo(modulo, "mittente-nazione").toUpperCase()
+  };
+  const indirizzoSedeDestinatario = {
+    via: valoreModulo(modulo, "indirizzo"),
+    cap: valoreModulo(modulo, "cap"),
+    comune: valoreModulo(modulo, "citta"),
+    provincia: valoreModulo(modulo, "provincia"),
+    nazione: valoreModulo(modulo, "destinatario-nazione").toUpperCase()
+  };
+  const destinatarioDiverso = modulo.get("destinatario-consegna-diversa") === "on";
+  const indirizzoConsegna = destinatarioDiverso ? {
+    via: valoreModulo(modulo, "consegna-via"),
+    cap: valoreModulo(modulo, "consegna-cap"),
+    comune: valoreModulo(modulo, "consegna-comune"),
+    provincia: valoreModulo(modulo, "consegna-provincia"),
+    nazione: valoreModulo(modulo, "consegna-nazione").toUpperCase()
+  } : null;
+  const indirizzoOrdine = indirizzoConsegna || indirizzoSedeDestinatario;
+  const destinatarioOrdine = {
+    nome: valoreModulo(modulo, "nome"),
+    telefono: valoreModulo(modulo, "telefono"),
+    email: valoreModulo(modulo, "email"),
+    indirizzo: indirizzoOrdine.via,
+    cap: indirizzoOrdine.cap,
+    citta: indirizzoOrdine.comune,
+    provincia: indirizzoOrdine.provincia,
+    note: valoreModulo(modulo, "note")
+  };
+  const mittente = {
+    ragione_sociale: valoreModulo(modulo, "mittente-ragione-sociale"),
+    partita_iva: valoreModulo(modulo, "mittente-partita-iva"),
+    indirizzo_sede_legale: indirizzoSedeMittente
+  };
+  const codiceFiscaleMittente = valoreModulo(modulo, "mittente-codice-fiscale");
+  if (codiceFiscaleMittente) mittente.codice_fiscale = codiceFiscaleMittente;
+
+  const contattiMittente = {};
+  const telefonoMittente = valoreModulo(modulo, "mittente-telefono");
+  const emailMittente = valoreModulo(modulo, "mittente-email");
+  if (telefonoMittente) contattiMittente.telefono = telefonoMittente;
+  if (emailMittente) contattiMittente.email = emailMittente;
+  if (Object.keys(contattiMittente).length) mittente.contatti = contattiMittente;
+
+  if (modulo.get("mittente-partenza-diversa") === "on") {
+    mittente.indirizzo_partenza_merce = {
+      via: valoreModulo(modulo, "partenza-via"),
+      cap: valoreModulo(modulo, "partenza-cap"),
+      comune: valoreModulo(modulo, "partenza-comune"),
+      provincia: valoreModulo(modulo, "partenza-provincia")
+    };
+  }
+
+  const destinatarioDdt = {
+    ragione_sociale: destinatarioOrdine.nome,
+    partita_iva_o_cf: valoreModulo(modulo, "destinatario-partita-iva-cf"),
+    indirizzo_sede_legale: indirizzoSedeDestinatario
+  };
+  if (indirizzoConsegna) destinatarioDdt.indirizzo_consegna = indirizzoConsegna;
+
+  const righeMerce = righeOrdine.map((articolo, indice) => {
+    const valoreCampoRiga = (campo) => valoreModulo(modulo, `ddt-item-${campo}-${indice}`);
+    const quantita = Number(valoreCampoRiga("quantity"));
+    const descrizione = valoreCampoRiga("description");
+    const unitaMisura = valoreCampoRiga("unit");
+    if (!Number.isFinite(quantita) || quantita <= 0 || !descrizione || !unitaMisura) {
+      throw new Error(`Controlla descrizione, quantità e unità di misura della riga ${indice + 1}.`);
+    }
+    const merce = {
+      posizione: indice + 1,
+      descrizione,
+      quantita,
+      unita_misura: unitaMisura
+    };
+    const codice = valoreCampoRiga("code");
+    const lotto = valoreCampoRiga("lot");
+    const scadenza = valoreCampoRiga("expiry");
+    const serie = valoreCampoRiga("serial");
+    if (codice) merce.codice_articolo = codice;
+    if (lotto) merce.lotto = lotto;
+    if (scadenza) merce.data_scadenza = scadenza;
+    if (serie) merce.numero_serie = serie;
+    return merce;
+  });
+
+  const logistica = {
+    data_ora_inizio_trasporto: valoreModulo(modulo, "trasporto-inizio"),
+    vettore_tipo: valoreModulo(modulo, "vettore-tipo"),
+    numero_colli: Number(valoreModulo(modulo, "trasporto-colli")),
+    aspetto_esteriore_beni: valoreModulo(modulo, "trasporto-aspetto")
+  };
+  if (!Number.isInteger(logistica.numero_colli) || logistica.numero_colli < 1) {
+    throw new Error("Il numero colli deve essere un numero intero maggiore di zero.");
+  }
+  const porto = valoreModulo(modulo, "trasporto-porto");
+  if (porto) logistica.porto = porto;
+  if (logistica.vettore_tipo === "Vettore Terzo") {
+    logistica.dati_vettore = {
+      ragione_sociale: valoreModulo(modulo, "vettore-ragione-sociale"),
+      partita_iva: valoreModulo(modulo, "vettore-partita-iva"),
+      indirizzo: valoreModulo(modulo, "vettore-indirizzo")
+    };
+  }
+
+  ["lordo", "netto"].forEach((tipo) => {
+    const campo = valoreModulo(modulo, `trasporto-peso-${tipo}`);
+    if (!campo) return;
+    const peso = Number(campo);
+    if (!Number.isFinite(peso) || peso < 0) {
+      throw new Error("Inserisci pesi validi e non negativi.");
+    }
+    logistica[`peso_${tipo}_kg`] = peso;
+  });
+  if (logistica.peso_lordo_kg !== undefined
+    && logistica.peso_netto_kg !== undefined
+    && logistica.peso_lordo_kg < logistica.peso_netto_kg) {
+    throw new Error("Il peso lordo non può essere inferiore al peso netto.");
+  }
+
+  const dataDdt = valoreModulo(modulo, "ddt-data");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataDdt)) {
+    throw new Error("Inserisci una data DDT valida.");
+  }
+  return {
+    cliente: destinatarioOrdine,
+    ddt: {
+      testata_documento: {
+        numero_ddt: "",
+        data_ddt: dataDdt,
+        causale_trasporto: valoreModulo(modulo, "ddt-causale")
+      },
+      emittente_mittente: mittente,
+      destinatario: destinatarioDdt,
+      righe_merce: righeMerce,
+      dati_trasporto_e_logistica: logistica,
+      note_e_firme: {
+        note_consegna: destinatarioOrdine.note,
+        firma_mittente_richiesta: true,
+        firma_vettore_richiesta: true,
+        firma_destinatario_richiesta: true
+      }
+    }
+  };
+}
+
 function apriConfermaOrdine() {
   if (!navigator.onLine) {
     mostraMessaggio(elementi.cartMessage, "Connettiti a internet per inviare l'ordine.");
@@ -985,21 +1315,31 @@ function apriConfermaOrdine() {
     return;
   }
   try {
-    raccogliRigheOrdine();
+    const righe = raccogliRigheOrdine();
     mostraMessaggio(elementi.checkoutMessage, "");
     elementi.checkoutForm.reset();
+    ripristinaMittenteDdt();
+    const oraLocale = new Date();
+    const valoreDataOraLocale = new Date(
+      oraLocale.getTime() - oraLocale.getTimezoneOffset() * 60_000
+    ).toISOString();
+    elementi.ddtDate.value = valoreDataOraLocale.slice(0, 10);
+    elementi.transportStart.value = valoreDataOraLocale.slice(0, 16);
+    aggiornaCampiCondizionaliDdt();
+    mostraRigheMerceDdt(righe);
     elementi.checkoutDialog.showModal();
   } catch (errore) {
     mostraMessaggio(elementi.cartMessage, errore.message);
   }
 }
 
-function messaggioErroreOrdine(errore) {
+function messaggioErroreOrdine(errore, fase) {
   if (!navigator.onLine || errore?.code === "unavailable") {
     return "Connessione assente: l'ordine non è stato inviato. Riprova quando sei online.";
   }
   if (errore?.code === "permission-denied") {
-    return "Permesso negato: pubblica le nuove regole Firestore e verifica il tuo accesso.";
+    const uid = utenteCorrente?.uid || "non disponibile";
+    return `Firestore ha negato ${fase} nel progetto ${firebaseConfig.projectId} per l'UID ${uid}. Verifica admins/${uid} e le regole della fase indicata.`;
   }
   return errore.message || "Non è stato possibile inviare l'ordine. Il carrello è rimasto salvato.";
 }
@@ -1021,24 +1361,19 @@ async function inviaOrdine(evento) {
   }
 
   const modulo = new FormData(elementi.checkoutForm);
-  const cliente = {
-    nome: String(modulo.get("nome") || "").trim(),
-    telefono: String(modulo.get("telefono") || "").trim(),
-    email: String(modulo.get("email") || "").trim(),
-    indirizzo: String(modulo.get("indirizzo") || "").trim(),
-    cap: String(modulo.get("cap") || "").trim(),
-    citta: String(modulo.get("citta") || "").trim(),
-    provincia: String(modulo.get("provincia") || "").trim(),
-    note: String(modulo.get("note") || "").trim()
-  };
-  const totale = righe.reduce((somma, riga) => somma + riga.subtotale, 0);
-  if (!window.confirm(`Confermi l'invio dell'ordine per ${cliente.nome}? Totale: ${formattaPrezzo(totale)}. L'operazione non si può annullare.`)) {
-    mostraMessaggio(elementi.checkoutMessage, "Ordine non inviato.", "avviso");
+  let datiDdt;
+  try {
+    datiDdt = creaDatiDdt(modulo, righe);
+  } catch (errore) {
+    mostraMessaggio(elementi.checkoutMessage, errore.message);
     return;
   }
+  const { cliente, ddt } = datiDdt;
+  const totale = righe.reduce((somma, riga) => somma + riga.subtotale, 0);
 
   elementi.confirmOrderButton.disabled = true;
   mostraMessaggio(elementi.checkoutMessage, "Invio dell'ordine in corso...", "avviso");
+  let faseInvio = "sincronizzazione del carrello";
   try {
     await persistiCarrello();
     if (!navigator.onLine) throw new Error("Connessione assente: l'ordine non è stato inviato.");
@@ -1046,32 +1381,60 @@ async function inviaOrdine(evento) {
     const riferimentoOrdine = doc(collection(db, "ordini"));
     const creatoIl = new Date();
     const numero = `ORD-${creatoIl.toISOString().slice(0, 10).replace(/-/g, "")}-${riferimentoOrdine.id.slice(-6).toUpperCase()}`;
-    const batch = writeBatch(db);
-    batch.set(riferimentoOrdine, {
-      uid: utenteCorrente.uid,
-      numero,
-      destinatario: cliente,
-      items: righe,
-      totale,
-      creatoIl: serverTimestamp(),
-      stato: "ricevuto"
+    const annoDdt = Number(ddt.testata_documento.data_ddt.slice(0, 4));
+    const riferimentoContatore = doc(db, "contatori", `ddt-${annoDdt}`);
+    const riferimentoCarrello = doc(db, "carrelli", utenteCorrente.uid);
+    faseInvio = "lettura del contatore DDT";
+    await runTransaction(db, async (transazione) => {
+      const contatore = await transazione.get(riferimentoContatore);
+      const ultimoNumero = contatore.exists() ? contatore.data().ultimoNumero : 0;
+      if (contatore.exists() && contatore.data().anno !== annoDdt) {
+        throw new Error("Il contatore DDT non corrisponde all'anno del documento.");
+      }
+      if (!Number.isInteger(ultimoNumero) || ultimoNumero < 0 || ultimoNumero >= 99999) {
+        throw new Error(`Progressivo DDT non valido o esaurito per l'anno ${annoDdt}.`);
+      }
+      const progressivo = ultimoNumero + 1;
+      ddt.testata_documento.numero_ddt = `${annoDdt}/${String(progressivo).padStart(5, "0")}`;
+      faseInvio = "scrittura atomica di contatore, ordine e carrello";
+      transazione.set(riferimentoContatore, {
+        anno: annoDdt,
+        ultimoNumero: progressivo,
+        aggiornatoIl: serverTimestamp()
+      });
+      transazione.set(riferimentoOrdine, {
+        uid: utenteCorrente.uid,
+        numero,
+        destinatario: cliente,
+        items: righe,
+        totale,
+        creatoIl: serverTimestamp(),
+        stato: "ricevuto",
+        ddt
+      });
+      transazione.set(riferimentoCarrello, {
+        items: [],
+        aggiornatoIl: serverTimestamp()
+      }, { merge: true });
     });
-    batch.set(doc(db, "carrelli", utenteCorrente.uid), {
-      items: [],
-      aggiornatoIl: serverTimestamp()
-    }, { merge: true });
-    await batch.commit();
 
+    salvaMittenteDdt(modulo);
     carrello.clear();
     scritturaCarrello = Promise.resolve();
     aggiornaCarrello();
-    ordineCorrente = { numero, creatoIl, destinatario: cliente, items: righe, totale };
+    ordineCorrente = { numero, creatoIl, destinatario: cliente, items: righe, totale, ddt };
     elementi.checkoutDialog.close();
     elementi.checkoutForm.reset();
     mostraRiepilogoOrdine(ordineCorrente);
+    mostraMessaggio(
+      elementi.orderSummaryMessage,
+      "Ordine inviato. Avvio il download della bolla; se non compare, usa il pulsante Scarica bolla finale.",
+      "successo"
+    );
+    scaricaBollaSpedizione();
   } catch (errore) {
-    console.error("Errore durante l'invio dell'ordine:", errore);
-    mostraMessaggio(elementi.checkoutMessage, messaggioErroreOrdine(errore));
+    console.error(`Errore durante ${faseInvio}:`, errore);
+    mostraMessaggio(elementi.checkoutMessage, messaggioErroreOrdine(errore, faseInvio));
   } finally {
     elementi.confirmOrderButton.disabled = false;
   }
@@ -1087,6 +1450,7 @@ function mostraRiepilogoOrdine(ordine) {
   chiudiSuggerimenti();
 
   elementi.orderNumber.textContent = ordine.numero;
+  elementi.orderDdtNumber.textContent = ordine.ddt?.testata_documento?.numero_ddt || "Non disponibile";
   elementi.orderDate.textContent = new Intl.DateTimeFormat("it-IT", {
     dateStyle: "long",
     timeStyle: "short"
@@ -1147,51 +1511,229 @@ function escapeHtml(testo) {
   return String(testo ?? "").replace(/[&<>"']/g, (carattere) => caratteriHtml[carattere]);
 }
 
+function formattaDataDdt(valore, includeOra = false) {
+  const data = new Date(includeOra ? valore : `${valore}T12:00:00`);
+  if (Number.isNaN(data.getTime())) return String(valore || "—");
+  const opzioni = includeOra
+    ? { dateStyle: "long", timeStyle: "short" }
+    : { dateStyle: "long" };
+  return new Intl.DateTimeFormat("it-IT", opzioni).format(data);
+}
+
+function indirizzoHtmlDdt(indirizzo) {
+  return [
+    indirizzo.via,
+    `${indirizzo.cap} ${indirizzo.comune} (${indirizzo.provincia})`,
+    indirizzo.nazione
+  ].filter(Boolean).map(escapeHtml).join("<br>");
+}
+
 function scaricaBollaSpedizione() {
   if (!ordineCorrente) return;
-  const ordine = ordineCorrente;
-  const destinatario = ordine.destinatario;
-  const righeCliente = [
-    ["Nome o ragione sociale", destinatario.nome],
-    ["Telefono", destinatario.telefono],
-    ["Email", destinatario.email],
-    ["Indirizzo", destinatario.indirizzo],
-    ["CAP", destinatario.cap],
-    ["Città", destinatario.citta],
-    ["Provincia", destinatario.provincia],
-    ["Note per la consegna", destinatario.note]
-  ].filter(([, valore]) => valore)
-    .map(([etichetta, valore]) => `<p><strong>${escapeHtml(etichetta)}:</strong> ${escapeHtml(valore)}</p>`)
-    .join("");
-  const righeProdotti = ordine.items.map((articolo) =>
-    `<tr><td>${escapeHtml(articolo.nome)}</td><td>${escapeHtml(articolo.codice || "—")}</td><td>${escapeHtml(articolo.confezione || "—")}</td><td>${articolo.quantita}</td><td>${escapeHtml(formattaPrezzo(articolo.prezzo))}</td><td>${escapeHtml(formattaPrezzo(articolo.subtotale))}</td></tr>`
-  ).join("");
+  const ddt = ordineCorrente.ddt;
+  if (!ddt) {
+    mostraMessaggio(elementi.orderSummaryMessage, "Questo ordine storico non contiene i dati necessari per generare un DDT.");
+    return;
+  }
+
+  const testata = ddt.testata_documento;
+  const mittente = ddt.emittente_mittente;
+  const destinatario = ddt.destinatario;
+  const logistica = ddt.dati_trasporto_e_logistica;
+  const note = ddt.note_e_firme;
+  const indirizzoDestinazione = destinatario.indirizzo_consegna || destinatario.indirizzo_sede_legale;
+  const campo = (etichetta, valore) => valore
+    ? `<p class="dato"><span>${escapeHtml(etichetta)}</span><strong>${escapeHtml(valore)}</strong></p>`
+    : "";
+  const datiVettore = logistica.dati_vettore;
+  const righeProdotti = ddt.righe_merce.map((articolo) => {
+    const tracciabilita = [
+      articolo.lotto ? `Lotto: ${articolo.lotto}` : "",
+      articolo.data_scadenza ? `Scadenza: ${formattaDataDdt(articolo.data_scadenza)}` : "",
+      articolo.numero_serie ? `N. serie: ${articolo.numero_serie}` : ""
+    ].filter(Boolean).map(escapeHtml).join("<br>") || "—";
+    const quantita = new Intl.NumberFormat("it-IT", {
+      maximumFractionDigits: 2
+    }).format(articolo.quantita);
+    return `<tr>
+      <td class="posizione">${articolo.posizione}</td>
+      <td class="codice">${escapeHtml(articolo.codice_articolo || "—")}</td>
+      <td>${escapeHtml(articolo.descrizione)}</td>
+      <td class="numero">${escapeHtml(quantita)}</td>
+      <td class="unita-misura">${escapeHtml(articolo.unita_misura)}</td>
+      <td class="tracciabilita">${tracciabilita}</td>
+    </tr>`;
+  }).join("");
+  const vettore = datiVettore
+    ? `${escapeHtml(datiVettore.ragione_sociale)} · P.IVA ${escapeHtml(datiVettore.partita_iva)}<br>${escapeHtml(datiVettore.indirizzo)}`
+    : escapeHtml(logistica.vettore_tipo);
+  const partenza = mittente.indirizzo_partenza_merce;
+  const peso = [
+    logistica.peso_lordo_kg !== undefined ? `Lordo: ${logistica.peso_lordo_kg} kg` : "",
+    logistica.peso_netto_kg !== undefined ? `Netto: ${logistica.peso_netto_kg} kg` : ""
+  ].filter(Boolean).map(escapeHtml).join(" · ") || "Non indicato";
   const html = `<!doctype html>
 <html lang="it">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bolla di spedizione ${escapeHtml(ordine.numero)}</title>
+  <title>DDT ${escapeHtml(testata.numero_ddt)}</title>
   <style>
-    body{font-family:Arial,sans-serif;color:#26352f;margin:32px;line-height:1.45}
-    main{max-width:900px;margin:auto}h1{color:#2F5D50}table{width:100%;border-collapse:collapse;margin-top:20px}
-    th,td{padding:9px;border:1px solid #d9ded8;text-align:left}th{background:#f2f6f3}
-    .totale{text-align:right;font-size:1.2rem;font-weight:bold;margin-top:20px}
-    @media print{body{margin:0}main{max-width:none}}
-    @media(max-width:600px){body{margin:14px}table{font-size:.78rem}th,td{padding:5px}}
+    @page {
+      size: A4;
+      margin: 18mm 17mm 19mm;
+      @top-left {
+        content: "DOCUMENTO DI TRASPORTO - DDT ${escapeHtml(testata.numero_ddt)}";
+        color: #17324d;
+        font: 700 8pt Arial, Helvetica, sans-serif;
+      }
+      @bottom-right {
+        content: "Pagina " counter(page) " di " counter(pages);
+        color: #6b7280;
+        font: 8pt Arial, Helvetica, sans-serif;
+      }
+    }
+    *{box-sizing:border-box}
+    html{color:#374151;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;font-size:10pt;line-height:1.25}
+    main{max-width:210mm;margin:24px auto;padding:15mm;background:#fff}
+    .toolbar{display:flex;justify-content:flex-end;max-width:210mm;margin:18px auto 0}
+    .toolbar button{min-height:42px;padding:9px 16px;border:0;border-radius:6px;background:#17324d;color:#fff;font:700 10pt Arial,Helvetica,sans-serif;cursor:pointer}
+    .intestazione{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px;padding-bottom:13px;border-bottom:1px solid #d1d5db}
+    h1{margin:0;color:#17324d;font-size:17pt;line-height:1.2;text-transform:uppercase}
+    h2{margin:0 0 9px;color:#17324d;font-size:10.5pt;line-height:1.2;text-transform:uppercase}
+    h3{margin:0 0 7px;color:#17324d;font-size:9pt;text-transform:uppercase;letter-spacing:.04em}
+    p{margin:5px 0}
+    .sottotitolo{margin-top:5px;color:#6b7280;font-size:9pt}
+    .numero-ddt{min-width:205px;padding:10px 12px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;text-align:right}
+    .numero-ddt span{display:block;color:#6b7280;font-size:8pt;font-weight:700;text-transform:uppercase}
+    .numero-ddt strong{display:block;margin:3px 0;color:#17324d;font-size:14pt}
+    .numero-ddt small{color:#6b7280;font-size:8pt}
+    .schede{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+    .scheda{min-width:0;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;break-inside:avoid;page-break-inside:avoid}
+    .scheda.destinazione{border-left:3px solid #17324d}
+    .ragione-sociale{font-size:10pt;font-weight:700}
+    .indirizzo{margin-top:7px}
+    .etichetta-destinazione{display:inline-block;margin-bottom:6px;color:#17324d;font-size:8pt;font-weight:800;letter-spacing:.04em}
+    .dato{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #e5e7eb;padding:5px 0}
+    .dato span{color:#6b7280}
+    .dato strong{text-align:right;overflow-wrap:anywhere}
+    .merce{margin-top:14px}
+    .tabella-wrap{overflow:visible}
+    table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9pt}
+    th,td{padding:6px 8px;border:1px solid #d1d5db;vertical-align:top;overflow-wrap:anywhere}
+    th{background:#e5e7eb;color:#17324d;font-size:8pt;font-weight:700;text-align:left;text-transform:uppercase}
+    .col-pos{width:5%}.col-code{width:15%}.col-description{width:34%}.col-quantity{width:12%}.col-unit{width:8%}.col-trace{width:26%}
+    .posizione,.codice,.unita-misura,.tracciabilita{text-align:center}
+    .numero{text-align:right;white-space:nowrap}
+    tbody tr:nth-child(even){background:#f9fafb}
+    .logistica{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;margin-top:4px}
+    .dati-spedizione{margin-top:14px}
+    .note{margin-top:12px;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;break-inside:avoid;page-break-inside:avoid}
+    .firme{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;break-inside:avoid;page-break-inside:avoid}
+    .firma{min-height:32mm;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#fff;break-inside:avoid;page-break-inside:avoid}
+    .spazio-firma{height:15mm;margin-top:10mm;border-bottom:1px solid #9ca3af}
+    .firma small{display:block;margin-top:5px;color:#6b7280;font-size:8pt}
+    .screen-only{display:flex}
+    @media(max-width:700px){
+      html{background:#fff}
+      main{margin:0;padding:16px}
+      .toolbar{margin:12px 16px}
+      .intestazione{flex-direction:column}
+      .numero-ddt{width:100%;text-align:left}
+      .schede,.logistica{grid-template-columns:1fr}
+      .tabella-wrap{overflow-x:auto}
+      table{min-width:640px}
+      .firme{grid-template-columns:1fr}
+    }
+    @media print{
+      html,body{background:#fff}
+      main{max-width:none;margin:0;padding:0}
+      .screen-only{display:none!important}
+      h2{break-after:avoid;page-break-after:avoid}
+      .scheda,.dati-spedizione,.note,.firma{break-inside:avoid;page-break-inside:avoid}
+      table{font-size:9pt}
+      thead{display:table-header-group}
+      tfoot{display:table-footer-group}
+      tr{break-inside:avoid;page-break-inside:avoid}
+      th,td{padding:6px 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      tbody tr:nth-child(even){background:#f9fafb!important}
+    }
   </style>
 </head>
 <body>
+  <div class="toolbar screen-only">
+    <button type="button" onclick="window.print()">Stampa / Salva PDF</button>
+  </div>
   <main>
-    <h1>Bolla di spedizione</h1>
-    <p><strong>Ordine:</strong> ${escapeHtml(ordine.numero)}</p>
-    <p><strong>Data:</strong> ${escapeHtml(new Intl.DateTimeFormat("it-IT", { dateStyle: "long", timeStyle: "short" }).format(ordine.creatoIl))}</p>
-    <h2>Destinatario</h2>
-    ${righeCliente}
-    <h2>Prodotti</h2>
-    <table><thead><tr><th>Prodotto</th><th>Codice</th><th>Confezione</th><th>Qtà</th><th>Prezzo unitario</th><th>Subtotale</th></tr></thead><tbody>${righeProdotti}</tbody></table>
-    <p class="totale">Totale: ${escapeHtml(formattaPrezzo(ordine.totale))}</p>
-    <p>Documento generato dal gestionale Dolcevolta.</p>
+    <header class="intestazione">
+      <div>
+        <h1>Documento di Trasporto - DDT</h1>
+        <p class="sottotitolo">Documento accompagnatorio della merce</p>
+      </div>
+      <div class="numero-ddt">
+        <span>Numero DDT</span>
+        <strong>${escapeHtml(testata.numero_ddt)}</strong>
+        <small>Data: ${escapeHtml(formattaDataDdt(testata.data_ddt))}</small>
+      </div>
+    </header>
+
+    <div class="schede">
+      <section class="scheda">
+        <h2>Emittente / mittente</h2>
+        <p class="ragione-sociale">${escapeHtml(mittente.ragione_sociale)}</p>
+        ${campo("Partita IVA", mittente.partita_iva)}
+        ${campo("Codice fiscale", mittente.codice_fiscale)}
+        <div class="indirizzo"><strong>Sede legale</strong><br>${indirizzoHtmlDdt(mittente.indirizzo_sede_legale)}</div>
+        ${partenza ? `<div class="indirizzo"><strong>Partenza merce</strong><br>${indirizzoHtmlDdt(partenza)}</div>` : ""}
+        ${mittente.contatti ? `${campo("Telefono", mittente.contatti.telefono)}${campo("Email", mittente.contatti.email)}` : ""}
+      </section>
+      <section class="scheda destinazione">
+        <span class="etichetta-destinazione">DESTINATARIO / LUOGO DI DESTINAZIONE</span>
+        <p class="ragione-sociale">${escapeHtml(destinatario.ragione_sociale)}</p>
+        ${campo("P.IVA / Codice fiscale", destinatario.partita_iva_o_cf)}
+        ${destinatario.indirizzo_consegna ? `<div class="indirizzo"><strong>Sede legale</strong><br>${indirizzoHtmlDdt(destinatario.indirizzo_sede_legale)}</div>` : ""}
+        <div class="indirizzo"><strong>${destinatario.indirizzo_consegna ? "Luogo di destinazione" : "Indirizzo"}</strong><br>${indirizzoHtmlDdt(indirizzoDestinazione)}</div>
+      </section>
+    </div>
+
+    <section class="merce">
+      <h2>Merce</h2>
+      <div class="tabella-wrap">
+        <table>
+          <colgroup>
+            <col class="col-pos"><col class="col-code"><col class="col-description">
+            <col class="col-quantity"><col class="col-unit"><col class="col-trace">
+          </colgroup>
+          <thead><tr>
+            <th class="posizione" scope="col">Pos.</th>
+            <th class="codice" scope="col">Codice</th>
+            <th scope="col">Descrizione / natura e qualità</th>
+            <th class="numero" scope="col">Quantità</th>
+            <th class="unita-misura" scope="col">U.M.</th>
+            <th class="tracciabilita" scope="col">Lotto / scadenza / n. serie</th>
+          </tr></thead>
+          <tbody>${righeProdotti}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="scheda dati-spedizione">
+      <h2>Dati spedizione</h2>
+      <div class="logistica">
+        <div>${campo("Causale trasporto", testata.causale_trasporto)}${campo("Inizio trasporto", formattaDataDdt(logistica.data_ora_inizio_trasporto, true))}</div>
+        <div>${campo("Vettore", vettore)}${campo("Porto", logistica.porto || "Non specificato")}</div>
+        <div>${campo("Numero colli", logistica.numero_colli)}${campo("Aspetto esteriore dei beni", logistica.aspetto_esteriore_beni)}</div>
+        <div>${campo("Peso", peso)}</div>
+      </div>
+    </section>
+
+    ${note.note_consegna ? `<section class="note"><strong>Note per la consegna</strong><p>${escapeHtml(note.note_consegna)}</p></section>` : ""}
+    <section class="firme" aria-label="Spazi per le firme">
+      <div class="firma"><h3>Firma mittente</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
+      <div class="firma"><h3>Firma vettore</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
+      <div class="firma"><h3>Firma destinatario</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
+    </section>
   </main>
 </body>
 </html>`;
@@ -1199,11 +1741,11 @@ function scaricaBollaSpedizione() {
   const url = URL.createObjectURL(file);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `bolla-${ordine.numero.replace(/[^A-Za-z0-9-]/g, "")}.html`;
+  link.download = `DDT-${testata.numero_ddt.replace(/[^A-Za-z0-9-]/g, "-")}.html`;
   document.body.append(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function evidenziaTesto(testo, termini) {
@@ -2092,6 +2634,10 @@ elementi.cartItems.addEventListener("click", gestisciAzioneCarrello);
 elementi.clearCartButton.addEventListener("click", svuotaCarrello);
 elementi.placeOrderButton.addEventListener("click", apriConfermaOrdine);
 elementi.checkoutForm.addEventListener("submit", inviaOrdine);
+elementi.senderDepartureToggle.addEventListener("change", aggiornaCampiCondizionaliDdt);
+elementi.customerDeliveryToggle.addEventListener("change", aggiornaCampiCondizionaliDdt);
+elementi.carrierType.addEventListener("change", aggiornaCampiCondizionaliDdt);
+aggiornaCampiCondizionaliDdt();
 elementi.checkoutForm.querySelectorAll("[data-close-checkout]").forEach((pulsante) => {
   pulsante.addEventListener("click", () => elementi.checkoutDialog.close());
 });

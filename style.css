@@ -164,12 +164,23 @@ textarea { min-height: 88px; resize: vertical; }
 .dialog { width: min(94vw, 560px); max-height: 92vh; padding: 0; border: 0; border-radius: 18px; background: transparent; color: inherit; }
 .dialog::backdrop { background: #18251f99; backdrop-filter: blur(2px); }
 .dialog-card { max-height: 92vh; overflow-y: auto; padding: 22px; border-radius: 18px; background: #fffefa; }
+.checkout-dialog { width: min(96vw, 780px); }
 .dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .dialog-heading h2 { margin: 0; color: var(--green); font-size: 1.35rem; }
 .icon-button { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 50%; background: #eff2ed; color: #34443b; font-size: 1.6rem; cursor: pointer; }
 .required { color: #a13c32; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-row label { display: block; }
+.form-section { min-width: 0; margin: 14px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.form-section legend, .form-subsection legend { padding: 0 6px; color: var(--green-dark); font-weight: 750; }
+.form-section h3 { margin: 12px 0 4px; color: var(--green-dark); font-size: .98rem; }
+.form-section > .muted, .form-section > p.muted { margin: 5px 0 10px; font-size: .84rem; }
+.form-subsection { min-width: 0; margin: 12px 0 4px; padding: 10px; border: 1px dashed #cbd5ce; border-radius: 10px; }
+.checkbox-field { display: flex; align-items: center; gap: 10px; margin: 14px 0 5px; font-weight: 650; }
+.checkbox-field input { width: 22px; min-height: 22px; flex: 0 0 auto; margin: 0; accent-color: var(--green); }
+.ddt-goods-line { min-width: 0; margin: 10px 0 0; padding: 10px; border: 1px solid #d9e0da; border-radius: 10px; background: #fff; }
+.ddt-goods-line legend { max-width: 100%; overflow-wrap: anywhere; }
+.ddt-goods-line > div + div { margin-top: 2px; }
 .photo-help { margin: 7px 0; font-size: .8rem; }
 .photo-preview-wrap { display: grid; min-height: 150px; place-items: center; overflow: hidden; border: 1px dashed #d5d9d3; border-radius: 12px; background: #f8f7f2; }
 .photo-preview { max-width: 100%; max-height: 240px; object-fit: contain; }
@@ -238,6 +249,14 @@ textarea { min-height: 88px; resize: vertical; }
   .order-edit-line { grid-template-columns: minmax(0, 1fr) 74px; }
   .order-edit-line .button { grid-column: 1 / -1; }
   .order-add-product { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .checkout-dialog { width: calc(100vw - 12px); }
+  .checkout-dialog .dialog-card { padding: 14px; }
+  .checkout-dialog .form-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .form-section { padding: 9px; }
+  .form-subsection { padding: 8px; }
 }
 
 @media (max-width: 380px) {

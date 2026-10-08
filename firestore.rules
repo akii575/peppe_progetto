@@ -42,6 +42,135 @@ service cloud.firestore {
         && destinatario.note.size() <= 1000;
     }
 
+    function indirizzoDdtValido(indirizzo) {
+      return indirizzo is map
+        && indirizzo.keys().hasAll(['via', 'cap', 'comune', 'provincia'])
+        && indirizzo.keys().hasOnly(['via', 'cap', 'comune', 'provincia', 'nazione'])
+        && indirizzo.via is string
+        && indirizzo.via.size() > 0
+        && indirizzo.via.size() <= 180
+        && indirizzo.cap is string
+        && indirizzo.cap.size() > 0
+        && indirizzo.cap.size() <= 20
+        && indirizzo.comune is string
+        && indirizzo.comune.size() > 0
+        && indirizzo.comune.size() <= 100
+        && indirizzo.provincia is string
+        && indirizzo.provincia.size() <= 80
+        && (!indirizzo.keys().hasAny(['nazione'])
+          || (indirizzo.nazione is string && indirizzo.nazione.size() == 2));
+    }
+
+    function mittenteDdtValido(mittente) {
+      return mittente is map
+        && mittente.keys().hasAll([
+          'ragione_sociale', 'partita_iva', 'indirizzo_sede_legale'
+        ])
+        && mittente.keys().hasOnly([
+          'ragione_sociale', 'partita_iva', 'codice_fiscale',
+          'indirizzo_sede_legale', 'indirizzo_partenza_merce', 'contatti'
+        ])
+        && mittente.ragione_sociale is string
+        && mittente.ragione_sociale.size() > 0
+        && mittente.ragione_sociale.size() <= 140
+        && mittente.partita_iva is string
+        && mittente.partita_iva.size() > 0
+        && mittente.partita_iva.size() <= 25
+        && (!mittente.keys().hasAny(['codice_fiscale'])
+          || (mittente.codice_fiscale is string && mittente.codice_fiscale.size() <= 20))
+        && indirizzoDdtValido(mittente.indirizzo_sede_legale)
+        && mittente.indirizzo_sede_legale.keys().hasAny(['nazione'])
+        && (!mittente.keys().hasAny(['indirizzo_partenza_merce'])
+          || indirizzoDdtValido(mittente.indirizzo_partenza_merce))
+        && (!mittente.keys().hasAny(['contatti'])
+          || (
+            mittente.contatti is map
+            && mittente.contatti.keys().hasOnly(['telefono', 'email'])
+            && (!mittente.contatti.keys().hasAny(['telefono'])
+              || (mittente.contatti.telefono is string && mittente.contatti.telefono.size() <= 40))
+            && (!mittente.contatti.keys().hasAny(['email'])
+              || (mittente.contatti.email is string && mittente.contatti.email.size() <= 180))
+          ));
+    }
+
+    function destinatarioDdtValido(destinatario) {
+      return destinatario is map
+        && destinatario.keys().hasAll([
+          'ragione_sociale', 'partita_iva_o_cf', 'indirizzo_sede_legale'
+        ])
+        && destinatario.keys().hasOnly([
+          'ragione_sociale', 'partita_iva_o_cf', 'indirizzo_sede_legale',
+          'indirizzo_consegna'
+        ])
+        && destinatario.ragione_sociale is string
+        && destinatario.ragione_sociale.size() > 0
+        && destinatario.ragione_sociale.size() <= 140
+        && destinatario.partita_iva_o_cf is string
+        && destinatario.partita_iva_o_cf.size() > 0
+        && destinatario.partita_iva_o_cf.size() <= 25
+        && indirizzoDdtValido(destinatario.indirizzo_sede_legale)
+        && destinatario.indirizzo_sede_legale.keys().hasAny(['nazione'])
+        && (!destinatario.keys().hasAny(['indirizzo_consegna'])
+          || indirizzoDdtValido(destinatario.indirizzo_consegna));
+    }
+
+    function vettoreDdtValido(vettore) {
+      return vettore is map
+        && vettore.keys().hasAll(['ragione_sociale', 'partita_iva', 'indirizzo'])
+        && vettore.keys().hasOnly(['ragione_sociale', 'partita_iva', 'indirizzo'])
+        && vettore.ragione_sociale is string
+        && vettore.ragione_sociale.size() > 0
+        && vettore.ragione_sociale.size() <= 140
+        && vettore.partita_iva is string
+        && vettore.partita_iva.size() > 0
+        && vettore.partita_iva.size() <= 25
+        && vettore.indirizzo is string
+        && vettore.indirizzo.size() > 0
+        && vettore.indirizzo.size() <= 180;
+    }
+
+    function ddtValido(ddt) {
+      return ddt is map
+        && ddt.keys().hasAll([
+          'testata_documento', 'emittente_mittente', 'destinatario',
+          'righe_merce', 'dati_trasporto_e_logistica', 'note_e_firme'
+        ])
+        && ddt.keys().hasOnly([
+          'testata_documento', 'emittente_mittente', 'destinatario',
+          'righe_merce', 'dati_trasporto_e_logistica', 'note_e_firme'
+        ])
+        && ddt.testata_documento is map
+        && ddt.testata_documento.keys().hasAll([
+          'numero_ddt', 'data_ddt', 'causale_trasporto'
+        ])
+        && ddt.testata_documento.numero_ddt is string
+        && ddt.testata_documento.numero_ddt.matches('^[0-9]{4}/[0-9]{5}$')
+        && ddt.testata_documento.data_ddt is string
+        && ddt.testata_documento.data_ddt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && ddt.testata_documento.causale_trasporto in [
+          'Vendita', 'Conto Visione', 'Conto Lavorazione',
+          'Reso', 'Riparazione', 'Omaggio'
+        ]
+        && ddt.emittente_mittente is map
+        && ddt.destinatario is map
+        && ddt.righe_merce is list
+        && ddt.righe_merce.size() > 0
+        && ddt.righe_merce.size() <= 100
+        && ddt.dati_trasporto_e_logistica is map
+        && ddt.dati_trasporto_e_logistica.keys().hasAll([
+          'data_ora_inizio_trasporto', 'vettore_tipo',
+          'numero_colli', 'aspetto_esteriore_beni'
+        ])
+        && ddt.note_e_firme is map
+        && ddt.note_e_firme.keys().hasAll([
+          'note_consegna', 'firma_mittente_richiesta',
+          'firma_vettore_richiesta', 'firma_destinatario_richiesta'
+        ])
+        && ddt.note_e_firme.firma_mittente_richiesta == true
+        && ddt.note_e_firme.firma_vettore_richiesta == true
+        && ddt.note_e_firme.firma_destinatario_richiesta == true;
+    }
+
     function ordineValido(ordine) {
       return ordine is map
         && ordine.keys().hasAll([
@@ -49,7 +178,7 @@ service cloud.firestore {
         ])
         && ordine.keys().hasOnly([
           'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl',
-          'stato', 'aggiornatoIl', 'annullatoIl'
+          'stato', 'aggiornatoIl', 'annullatoIl', 'ddt'
         ])
         && ordine.uid is string
         && ordine.numero is string
@@ -61,10 +190,8 @@ service cloud.firestore {
         && ordine.items.size() <= 100
         && ordine.totale is number
         && ordine.totale >= 0
-        && ordine.creatoIl is timestamp
         && ordine.stato in ['ricevuto', 'annullato']
-        && (!ordine.keys().hasAny(['aggiornatoIl']) || ordine.aggiornatoIl is timestamp)
-        && (!ordine.keys().hasAny(['annullatoIl']) || ordine.annullatoIl is timestamp);
+        && (!ordine.keys().hasAny(['ddt']) || ddtValido(ordine.ddt));
     }
 
     match /admins/{utenteId} {
@@ -81,11 +208,32 @@ service cloud.firestore {
       allow read, write: if amministratore() && request.auth.uid == utenteId;
     }
 
+    match /contatori/{contatoreId} {
+      allow read: if amministratore();
+      allow create: if amministratore()
+        && request.resource.data.keys().hasAll(['anno', 'ultimoNumero', 'aggiornatoIl'])
+        && request.resource.data.keys().hasOnly(['anno', 'ultimoNumero', 'aggiornatoIl'])
+        && request.resource.data.anno is int
+        && request.resource.data.ultimoNumero is int
+        && request.resource.data.ultimoNumero >= 1
+        && request.resource.data.ultimoNumero <= 99999
+        && request.resource.data.aggiornatoIl == request.time;
+      allow update: if amministratore()
+        && request.resource.data.keys().hasAll(['anno', 'ultimoNumero', 'aggiornatoIl'])
+        && request.resource.data.keys().hasOnly(['anno', 'ultimoNumero', 'aggiornatoIl'])
+        && request.resource.data.anno == resource.data.anno
+        && request.resource.data.ultimoNumero == resource.data.ultimoNumero + 1
+        && request.resource.data.aggiornatoIl == request.time;
+      allow delete: if false;
+    }
+
     match /ordini/{ordineId} {
       allow create: if amministratore()
         && ordineValido(request.resource.data)
+        && request.resource.data.keys().hasAny(['ddt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.stato == 'ricevuto'
+        && request.resource.data.creatoIl == request.time
         && !request.resource.data.keys().hasAny(['aggiornatoIl', 'annullatoIl']);
       allow read: if amministratore();
       allow update: if amministratore()
@@ -93,6 +241,10 @@ service cloud.firestore {
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.numero == resource.data.numero
         && request.resource.data.creatoIl == resource.data.creatoIl
+        && (!request.resource.data.keys().hasAny(['aggiornatoIl'])
+          || request.resource.data.aggiornatoIl == request.time)
+        && (!request.resource.data.keys().hasAny(['annullatoIl'])
+          || request.resource.data.annullatoIl == request.time)
         && resource.data.get('stato', 'ricevuto') != 'annullato'
         && (
           request.resource.data.stato == resource.data.get('stato', 'ricevuto')
