@@ -41,28 +41,20 @@
 
       <main class="page-content">
         <div id="connection-message" class="connection-message" role="status" aria-live="polite"></div>
+        <h1 class="catalog-title">Catalogo prodotti</h1>
         <section class="toolbar" aria-label="Strumenti catalogo">
-          <div>
-            <h1>Catalogo prodotti</h1>
-            <p id="product-count" class="muted">Caricamento prodotti...</p>
-          </div>
-          <div class="toolbar-actions">
+          <div class="toolbar-category">
             <label class="visually-hidden" for="category-filter">Filtra per categoria</label>
             <select id="category-filter">
               <option value="">Tutte le categorie</option>
             </select>
-            <button id="add-product-button" class="button button-primary" type="button">+ Nuovo prodotto</button>
+            <span id="product-count" class="muted" role="status" aria-live="polite">Caricamento prodotti...</span>
           </div>
-        </section>
-
-        <section class="import-panel" aria-label="Importazione prodotti">
-          <div class="import-copy">
-            <strong>Importa il catalogo iniziale</strong>
-            <span class="muted">Puoi ripetere l’importazione senza creare duplicati.</span>
-          </div>
-          <div class="import-actions">
-            <input id="json-file" type="file" accept="application/json,.json" hidden>
-            <button id="import-button" class="button button-secondary" type="button">Importa da file JSON</button>
+          <button id="add-product-button" class="button button-primary" type="button">+ Nuovo prodotto</button>
+          <button id="delete-all-button" class="button button-danger button-delete-all" type="button">Elimina tutti i prodotti</button>
+          <div class="toolbar-import">
+            <input id="json-file" type="file" accept=".json" hidden>
+            <button id="import-button" class="button button-secondary" type="button">Importa JSON</button>
             <span id="import-progress" class="muted" role="status" aria-live="polite"></span>
           </div>
         </section>

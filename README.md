@@ -22,7 +22,9 @@ Gli upload unsigned non richiedono un segreto API nel browser, ma il preset è p
 
 1. Pubblica la cartella trascinandola su [Netlify Drop](https://app.netlify.com/drop), oppure collega il repository a Vercel come sito statico.
 2. In **Firebase Authentication > Impostazioni > Domini autorizzati**, verifica che `localhost` sia presente per i test locali e aggiungi il dominio del sito pubblicato.
-3. Apri il sito, accedi con l’utente creato nella Console Firebase, fai clic su **Importa da file JSON** e scegli `prodotti_dolcevolta.json`. L’importazione usa l’ID numerico del file come ID documento; rilanciarla aggiorna i prodotti esistenti senza cancellare le foto già caricate.
+3. Apri il sito, accedi con l’utente creato nella Console Firebase, fai clic su **Importa JSON** e scegli `prodotti_dolcevolta.json`. L’importazione usa l’ID numerico del file come ID documento; rilanciarla aggiorna i prodotti esistenti senza cancellare le foto già caricate.
+
+La barra strumenti permette di filtrare per categoria, aggiungere prodotti, importare il JSON ed eliminare il catalogo intero. L’eliminazione completa richiede una conferma e la parola `ELIMINA`; importazioni ed eliminazioni richiedono una connessione Internet. Le foto caricate su Cloudinary non possono essere eliminate dall’app frontend: rimuovile dalla libreria Cloudinary se necessario.
 
 Per provare il sito localmente, avvialo da un server statico (non aprire `index.html` direttamente come file), per esempio con l’estensione Live Server di VS Code. Non serve alcun comando di build.
 

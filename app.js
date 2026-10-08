@@ -25,6 +25,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   initializeFirestore,
   onSnapshot,
   persistentLocalCache,
@@ -33,6 +34,11 @@ import {
   setDoc,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  deleteObject,
+  getStorage,
+  ref
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 const appFirebase = initializeApp(firebaseConfig);
 const auth = getAuth(appFirebase);
@@ -47,6 +53,7 @@ const elementi = {
   appView: document.getElementById("app-view"),
   logoutButton: document.getElementById("logout-button"),
   connectionMessage: document.getElementById("connection-message"),
+  toolbar: document.querySelector(".toolbar"),
   categoryFilter: document.getElementById("category-filter"),
   categoryOptions: document.getElementById("category-options"),
   productCount: document.getElementById("product-count"),
@@ -56,6 +63,7 @@ const elementi = {
   jsonFile: document.getElementById("json-file"),
   importProgress: document.getElementById("import-progress"),
   addProductButton: document.getElementById("add-product-button"),
+  deleteAllButton: document.getElementById("delete-all-button"),
   productDialog: document.getElementById("product-dialog"),
   productForm: document.getElementById("product-form"),
   productFormTitle: document.getElementById("product-form-title"),
@@ -603,21 +611,122 @@ async function salvaProdotto(evento) {
 }
 
 async function eliminaProdotto(prodotto) {
-  const nome = prodotto.nome || prodotto.codice || "questo prodotto";
-  if (!window.confirm(`Vuoi eliminare "${nome}"? L’operazione non può essere annullata.`)) return;
+  if (!verificaConnessioneOperazione()) return;
+  const nome = prodotto.nome || "Prodotto senza nome";
+  const codice = prodotto.codice || "—";
+  if (!window.confirm(`Vuoi eliminare definitivamente «${nome}» (codice ${codice})? L'operazione non si può annullare.`)) return;
   try {
     await deleteDoc(doc(db, "prodotti", prodotto.id));
   } catch (errore) {
     console.error("Errore durante l’eliminazione del prodotto:", errore);
-    mostraMessaggio(elementi.appMessage, errore.code === "unavailable"
-      ? "Connessione assente: il prodotto non è stato eliminato."
-      : "Non è stato possibile eliminare il prodotto. Controlla la connessione e i permessi.");
+    mostraMessaggio(elementi.appMessage, messaggioErroreOperazione(errore, "eliminare il prodotto"));
     return;
   }
-  const messaggio = prodotto.fotoUrl
-    ? "Prodotto eliminato. La foto resta su Cloudinary: cancellala dalla libreria Cloudinary se non ti serve più."
-    : "Prodotto eliminato.";
-  mostraMessaggio(elementi.appMessage, messaggio, "successo");
+  await eliminaFotoDaStorage(prodotto.fotoPath);
+  mostraMessaggio(elementi.appMessage, "Prodotto eliminato.", "successo");
+  if (prodotto.fotoUrl && !prodotto.fotoPath) {
+    elementi.connectionMessage.textContent = "La foto Cloudinary resta nella libreria Cloudinary: rimuovila manualmente se non ti serve più.";
+  }
+}
+
+function verificaConnessioneOperazione() {
+  if (navigator.onLine) return true;
+  mostraMessaggio(elementi.appMessage, "Connettiti a internet per eseguire questa operazione");
+  return false;
+}
+
+function messaggioErroreOperazione(errore, operazione) {
+  if (!navigator.onLine || errore?.code === "unavailable") {
+    return "Connettiti a internet per eseguire questa operazione";
+  }
+  if (errore?.code === "permission-denied") {
+    return `Permesso negato: verifica l’accesso e le regole Firestore prima di ${operazione}.`;
+  }
+  return `Non è stato possibile ${operazione}. Riprova e controlla la connessione.`;
+}
+
+function impostaBarraOccupata(occupata) {
+  elementi.toolbar.querySelectorAll("button, select, input").forEach((controllo) => {
+    controllo.disabled = occupata;
+  });
+}
+
+async function eliminaFotoDaStorage(percorso) {
+  if (!percorso) return;
+  try {
+    await deleteObject(ref(getStorage(appFirebase), percorso));
+  } catch (errore) {
+    console.warn(`Foto Storage non eliminata (${percorso}); procedo con l'operazione:`, errore);
+  }
+}
+
+async function eliminaTuttiProdotti() {
+  if (!verificaConnessioneOperazione()) return;
+
+  let istantanea;
+  try {
+    istantanea = await getDocs(prodottiRef);
+  } catch (errore) {
+    console.error("Errore durante la lettura dei prodotti da eliminare:", errore);
+    mostraMessaggio(elementi.appMessage, messaggioErroreOperazione(errore, "leggere il catalogo"));
+    return;
+  }
+  if (istantanea.empty) {
+    window.alert("Non ci sono prodotti da eliminare.");
+    return;
+  }
+
+  if (!window.confirm(`Stai per eliminare TUTTI i ${istantanea.size} prodotti del catalogo. L'operazione non si può annullare. Vuoi continuare?`)) {
+    mostraMessaggio(elementi.appMessage, "Operazione annullata", "avviso");
+    return;
+  }
+  const parolaConferma = window.prompt("Per confermare, scrivi esattamente ELIMINA.");
+  if (parolaConferma !== "ELIMINA") {
+    mostraMessaggio(elementi.appMessage, "Operazione annullata", "avviso");
+    return;
+  }
+
+  impostaBarraOccupata(true);
+  elementi.importProgress.textContent = "Lettura aggiornata del catalogo...";
+  mostraMessaggio(elementi.appMessage, "");
+  try {
+    if (!verificaConnessioneOperazione()) return;
+    const prodottiAggiornati = await getDocs(prodottiRef);
+    if (prodottiAggiornati.empty) {
+      elementi.importProgress.textContent = "";
+      window.alert("Non ci sono prodotti da eliminare.");
+      return;
+    }
+
+    const documenti = prodottiAggiornati.docs;
+    let eliminati = 0;
+    for (let inizio = 0; inizio < documenti.length; inizio += 400) {
+      const gruppo = documenti.slice(inizio, inizio + 400);
+      const batch = writeBatch(db);
+      gruppo.forEach((documento) => batch.delete(documento.ref));
+      await batch.commit();
+      eliminati += gruppo.length;
+      elementi.importProgress.textContent = `Eliminati ${eliminati}/${documenti.length}`;
+    }
+
+    let fotoCloudinaryRimaste = false;
+    for (const documento of documenti) {
+      const prodotto = documento.data();
+      if (prodotto.fotoPath) await eliminaFotoDaStorage(prodotto.fotoPath);
+      if (prodotto.fotoUrl && !prodotto.fotoPath) fotoCloudinaryRimaste = true;
+    }
+
+    mostraMessaggio(elementi.appMessage, "Tutti i prodotti sono stati eliminati.", "successo");
+    elementi.importProgress.textContent = `Eliminati ${eliminati}/${documenti.length}`;
+    elementi.connectionMessage.textContent = fotoCloudinaryRimaste
+      ? "Le foto Cloudinary restano nella libreria Cloudinary: rimuovile manualmente se non ti servono più."
+      : "";
+  } catch (errore) {
+    console.error("Errore durante l’eliminazione del catalogo:", errore);
+    mostraMessaggio(elementi.appMessage, messaggioErroreOperazione(errore, "eliminare il catalogo"));
+  } finally {
+    impostaBarraOccupata(false);
+  }
 }
 
 function mappaProdottoJson(voce, indice) {
@@ -648,7 +757,11 @@ function mappaProdottoJson(voce, indice) {
 }
 
 async function importaDaJson(file) {
-  elementi.importButton.disabled = true;
+  if (!verificaConnessioneOperazione()) {
+    elementi.jsonFile.value = "";
+    return;
+  }
+  impostaBarraOccupata(true);
   elementi.importProgress.textContent = "Lettura del file...";
   mostraMessaggio(elementi.appMessage, "");
   try {
@@ -680,7 +793,9 @@ async function importaDaJson(file) {
   } catch (errore) {
     console.error("Errore durante l’importazione JSON:", errore);
     elementi.importProgress.textContent = "";
-    const dettaglio = errore instanceof SyntaxError
+    const dettaglio = !navigator.onLine || errore.code === "unavailable"
+      ? "Connettiti a internet per eseguire questa operazione"
+      : errore instanceof SyntaxError
       ? "Il file non contiene JSON valido."
       : errore.code === "permission-denied"
         ? "Permesso negato: verifica l’accesso e le regole Firestore."
@@ -689,7 +804,7 @@ async function importaDaJson(file) {
         : errore.message || "Importazione non riuscita.";
     mostraMessaggio(elementi.appMessage, `Importazione non riuscita: ${dettaglio}`);
   } finally {
-    elementi.importButton.disabled = false;
+    impostaBarraOccupata(false);
     elementi.jsonFile.value = "";
   }
 }
@@ -799,11 +914,15 @@ elementi.productPhoto.addEventListener("change", () => {
   elementi.photoStatus.textContent = "";
 });
 
-elementi.importButton.addEventListener("click", () => elementi.jsonFile.click());
+elementi.importButton.addEventListener("click", () => {
+  if (!verificaConnessioneOperazione()) return;
+  elementi.jsonFile.click();
+});
 elementi.jsonFile.addEventListener("change", () => {
   const file = elementi.jsonFile.files?.[0];
   if (file) importaDaJson(file);
 });
+elementi.deleteAllButton.addEventListener("click", eliminaTuttiProdotti);
 
 elementi.searchInput.addEventListener("input", () => {
   window.clearTimeout(timerRicerca);
