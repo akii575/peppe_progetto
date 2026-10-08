@@ -51,7 +51,22 @@ const elementi = {
   loginForm: document.getElementById("login-form"),
   loginMessage: document.getElementById("login-message"),
   appView: document.getElementById("app-view"),
+  topbarInner: document.querySelector(".topbar-inner"),
   logoutButton: document.getElementById("logout-button"),
+  cartButton: document.getElementById("cart-button"),
+  cartCount: document.getElementById("cart-count"),
+  catalogPage: document.getElementById("catalog-page"),
+  cartPage: document.getElementById("cart-page"),
+  backToCatalogButton: document.getElementById("back-to-catalog"),
+  cartItems: document.getElementById("cart-items"),
+  cartEmpty: document.getElementById("cart-empty"),
+  cartSummary: document.getElementById("cart-summary"),
+  cartTotalItems: document.getElementById("cart-total-items"),
+  cartTotalLabel: document.getElementById("cart-total-label"),
+  cartTotalPrice: document.getElementById("cart-total-price"),
+  cartUnknownPrices: document.getElementById("cart-unknown-prices"),
+  cartMessage: document.getElementById("cart-message"),
+  clearCartButton: document.getElementById("clear-cart-button"),
   connectionMessage: document.getElementById("connection-message"),
   toolbar: document.querySelector(".toolbar"),
   categoryFilter: document.getElementById("category-filter"),
@@ -97,6 +112,7 @@ const formatterPrezzo = new Intl.NumberFormat("it-IT", {
   currency: "EUR"
 });
 let prodotti = [];
+let carrello = new Map();
 let interrompiAscolto = null;
 let suggerimentiVisibili = [];
 let indiceSuggerimento = -1;
@@ -122,9 +138,9 @@ function formattaPrezzo(prezzo) {
     : "Prezzo non indicato";
 }
 
-function creaPlaceholder() {
+function creaPlaceholder(classe = "product-photo-placeholder") {
   const placeholder = document.createElement("div");
-  placeholder.className = "product-photo-placeholder";
+  placeholder.className = classe;
   placeholder.setAttribute("aria-label", "Foto non disponibile");
   placeholder.textContent = "🍬";
   return placeholder;
@@ -137,7 +153,8 @@ function creaImmagine(url, classe, descrizione) {
   immagine.loading = "lazy";
   immagine.src = url;
   immagine.addEventListener("error", () => {
-    immagine.replaceWith(creaPlaceholder());
+    const classePlaceholder = classe === "cart-item-photo" ? "cart-item-photo-placeholder" : "product-photo-placeholder";
+    immagine.replaceWith(creaPlaceholder(classePlaceholder));
   }, { once: true });
   return immagine;
 }
@@ -224,7 +241,12 @@ function creaSchedaProdotto(prodotto) {
   elimina.type = "button";
   elimina.textContent = "Elimina";
   elimina.addEventListener("click", () => eliminaProdotto(prodotto));
-  azioni.append(modifica, elimina);
+  const aggiungiAlCarrelloButton = document.createElement("button");
+  aggiungiAlCarrelloButton.className = "button button-primary button-cart";
+  aggiungiAlCarrelloButton.type = "button";
+  aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
+  aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto));
+  azioni.append(modifica, elimina, aggiungiAlCarrelloButton);
   corpo.append(azioni);
   scheda.append(corpo);
   return scheda;
@@ -242,6 +264,151 @@ function filtraProdotti() {
     return;
   }
   visibili.forEach((prodotto) => elementi.productList.append(creaSchedaProdotto(prodotto)));
+}
+
+function aggiungiAlCarrello(prodotto) {
+  const riga = carrello.get(prodotto.id);
+  carrello.set(prodotto.id, { quantita: (riga?.quantita || 0) + 1 });
+  aggiornaCarrello();
+  mostraMessaggio(elementi.appMessage, `${prodotto.nome} aggiunto al carrello.`, "successo");
+}
+
+function creaRigaCarrello(prodotto, quantita) {
+  const riga = document.createElement("article");
+  riga.className = "cart-item";
+  const principale = document.createElement("div");
+  principale.className = "cart-item-main";
+  if (prodotto.fotoUrl) {
+    principale.append(creaImmagine(prodotto.fotoUrl, "cart-item-photo", `Foto di ${prodotto.nome}`));
+  } else {
+    const segnaposto = document.createElement("div");
+    segnaposto.className = "cart-item-photo-placeholder";
+    segnaposto.textContent = "🍬";
+    segnaposto.setAttribute("aria-label", "Foto non disponibile");
+    principale.append(segnaposto);
+  }
+
+  const dettagli = document.createElement("div");
+  dettagli.className = "cart-item-details";
+  const nome = document.createElement("h2");
+  nome.textContent = prodotto.nome || "Prodotto senza nome";
+  const codice = document.createElement("p");
+  codice.className = "cart-item-code";
+  codice.textContent = `Codice: ${prodotto.codice || "—"}`;
+  const prezzo = document.createElement("p");
+  prezzo.className = "cart-item-unit-price";
+  prezzo.textContent = `Prezzo unitario: ${formattaPrezzo(prodotto.prezzo)}`;
+  dettagli.append(nome, codice, prezzo);
+  principale.append(dettagli);
+
+  const controlli = document.createElement("div");
+  controlli.className = "cart-item-controls";
+  const quantitaControlli = document.createElement("div");
+  quantitaControlli.className = "quantity-control";
+  const meno = document.createElement("button");
+  meno.className = "quantity-button";
+  meno.type = "button";
+  meno.textContent = "−";
+  meno.disabled = quantita <= 1;
+  meno.setAttribute("aria-label", `Riduci quantità di ${prodotto.nome}`);
+  meno.dataset.cartAction = "decrementa";
+  meno.dataset.productId = prodotto.id;
+  const quantitaTesto = document.createElement("span");
+  quantitaTesto.className = "quantity-value";
+  quantitaTesto.textContent = String(quantita);
+  const piu = document.createElement("button");
+  piu.className = "quantity-button";
+  piu.type = "button";
+  piu.textContent = "+";
+  piu.setAttribute("aria-label", `Aumenta quantità di ${prodotto.nome}`);
+  piu.dataset.cartAction = "incrementa";
+  piu.dataset.productId = prodotto.id;
+  quantitaControlli.append(meno, quantitaTesto, piu);
+
+  const subtotale = document.createElement("strong");
+  subtotale.className = "cart-item-subtotal";
+  subtotale.textContent = typeof prodotto.prezzo === "number" && Number.isFinite(prodotto.prezzo)
+    ? formattaPrezzo(prodotto.prezzo * quantita)
+    : "Totale non disponibile";
+  const rimuovi = document.createElement("button");
+  rimuovi.className = "button button-quiet cart-remove-button";
+  rimuovi.type = "button";
+  rimuovi.textContent = "Rimuovi";
+  rimuovi.dataset.cartAction = "rimuovi";
+  rimuovi.dataset.productId = prodotto.id;
+  controlli.append(quantitaControlli, subtotale, rimuovi);
+  riga.append(principale, controlli);
+  return riga;
+}
+
+function aggiornaCarrello() {
+  const prodottiPerId = new Map(prodotti.map((prodotto) => [prodotto.id, prodotto]));
+  for (const id of carrello.keys()) {
+    if (!prodottiPerId.has(id)) carrello.delete(id);
+  }
+  const righe = [...carrello.entries()]
+    .map(([id, dati]) => ({ prodotto: prodottiPerId.get(id), quantita: dati.quantita }))
+    .filter((riga) => riga.prodotto);
+  const numeroArticoli = righe.reduce((totale, riga) => totale + riga.quantita, 0);
+  elementi.cartCount.textContent = String(numeroArticoli);
+  elementi.cartButton.setAttribute("aria-label", `Apri carrello, ${numeroArticoli} ${numeroArticoli === 1 ? "articolo" : "articoli"}`);
+  elementi.cartItems.replaceChildren(...righe.map((riga) => creaRigaCarrello(riga.prodotto, riga.quantita)));
+  elementi.cartEmpty.hidden = righe.length > 0;
+  elementi.cartSummary.hidden = righe.length === 0;
+  elementi.cartTotalItems.textContent = String(numeroArticoli);
+
+  let totale = 0;
+  let quantitaSenzaPrezzo = 0;
+  righe.forEach(({ prodotto, quantita }) => {
+    if (typeof prodotto.prezzo === "number" && Number.isFinite(prodotto.prezzo)) {
+      totale += prodotto.prezzo * quantita;
+    } else {
+      quantitaSenzaPrezzo += quantita;
+    }
+  });
+  elementi.cartTotalPrice.textContent = formatterPrezzo.format(totale);
+  elementi.cartTotalLabel.textContent = quantitaSenzaPrezzo ? "Totale parziale" : "Totale";
+  elementi.cartUnknownPrices.hidden = quantitaSenzaPrezzo === 0;
+  if (quantitaSenzaPrezzo) {
+    elementi.cartUnknownPrices.textContent = `${quantitaSenzaPrezzo} ${quantitaSenzaPrezzo === 1 ? "articolo senza prezzo non è incluso" : "articoli senza prezzo non sono inclusi"} nel totale.`;
+  }
+}
+
+function mostraCarrello(aperto) {
+  elementi.catalogPage.hidden = aperto;
+  elementi.cartPage.hidden = !aperto;
+  elementi.searchArea.hidden = aperto;
+  elementi.topbarInner.classList.toggle("cart-open", aperto);
+  elementi.cartButton.setAttribute("aria-label", aperto ? "Torna al catalogo" : `Apri carrello, ${elementi.cartCount.textContent} articoli`);
+  chiudiSuggerimenti();
+  if (aperto) aggiornaCarrello();
+}
+
+function gestisciAzioneCarrello(evento) {
+  const pulsante = evento.target.closest("button[data-cart-action]");
+  if (!pulsante) return;
+  const id = pulsante.dataset.productId;
+  const riga = carrello.get(id);
+  if (!riga) return;
+
+  if (pulsante.dataset.cartAction === "rimuovi") {
+    carrello.delete(id);
+    mostraMessaggio(elementi.cartMessage, "Prodotto rimosso dal carrello.", "successo");
+  } else {
+    const incremento = pulsante.dataset.cartAction === "incrementa" ? 1 : -1;
+    riga.quantita = Math.max(1, riga.quantita + incremento);
+    carrello.set(id, riga);
+    elementi.cartMessage.textContent = "";
+  }
+  aggiornaCarrello();
+}
+
+function svuotaCarrello() {
+  if (!carrello.size) return;
+  if (!window.confirm("Vuoi rimuovere tutti i prodotti dal carrello?")) return;
+  carrello.clear();
+  aggiornaCarrello();
+  mostraMessaggio(elementi.cartMessage, "Carrello svuotato.", "successo");
 }
 
 function evidenziaTesto(testo, termini) {
@@ -929,6 +1096,7 @@ function iniziaAscolto() {
       .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "it"));
     aggiornaCategorie();
     filtraProdotti();
+    aggiornaCarrello();
     if (!navigator.onLine) {
       elementi.connectionMessage.textContent = "Sei offline: vengono mostrati i dati salvati sul dispositivo.";
     } else if (istantanea.metadata.fromCache) {
@@ -989,17 +1157,27 @@ elementi.logoutButton.addEventListener("click", async () => {
 onAuthStateChanged(auth, (utente) => {
   elementi.loginView.hidden = Boolean(utente);
   elementi.appView.hidden = !utente;
-  if (utente) iniziaAscolto();
+  if (utente) {
+    mostraCarrello(false);
+    iniziaAscolto();
+  }
   else {
     if (interrompiAscolto) interrompiAscolto();
     interrompiAscolto = null;
     prodotti = [];
+    carrello.clear();
     elementi.productList.replaceChildren();
     elementi.productCount.textContent = "Accedi per vedere il catalogo";
+    mostraCarrello(false);
+    aggiornaCarrello();
     chiudiSuggerimenti();
   }
 });
 
+elementi.cartButton.addEventListener("click", () => mostraCarrello(elementi.cartPage.hidden));
+elementi.backToCatalogButton.addEventListener("click", () => mostraCarrello(false));
+elementi.cartItems.addEventListener("click", gestisciAzioneCarrello);
+elementi.clearCartButton.addEventListener("click", svuotaCarrello);
 elementi.categoryFilter.addEventListener("change", filtraProdotti);
 elementi.addProductButton.addEventListener("click", () => apriFormProdotto());
 elementi.productForm.addEventListener("submit", salvaProdotto);

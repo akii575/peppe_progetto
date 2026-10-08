@@ -35,11 +35,15 @@
             <input id="search-input" type="search" placeholder="Cerca nome o codice..." autocomplete="off" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">
             <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
           </div>
+          <button id="cart-button" class="button button-quiet cart-button" type="button" aria-label="Apri carrello">
+            <span aria-hidden="true">🛒</span>
+            <span id="cart-count" class="cart-count">0</span>
+          </button>
           <button id="logout-button" class="button button-quiet" type="button">Esci</button>
         </div>
       </header>
 
-      <main class="page-content">
+      <main id="catalog-page" class="page-content">
         <div id="connection-message" class="connection-message" role="status" aria-live="polite"></div>
         <h1 class="catalog-title">Catalogo prodotti</h1>
         <section class="toolbar" aria-label="Strumenti catalogo">
@@ -64,6 +68,26 @@
 
         <p id="app-message" class="message" role="status" aria-live="polite"></p>
         <section id="product-list" class="product-grid" aria-label="Elenco prodotti"></section>
+      </main>
+
+      <main id="cart-page" class="page-content cart-page" hidden>
+        <div class="cart-page-heading">
+          <div>
+            <p class="eyebrow">RIEPILOGO ACQUISTO</p>
+            <h1>Il tuo carrello</h1>
+          </div>
+          <button id="back-to-catalog" class="button button-secondary" type="button">Torna ai prodotti</button>
+        </div>
+        <p class="muted cart-note">Il carrello è temporaneo e si svuota quando ricarichi la pagina. Il totale usa il prezzo standard (IVA inclusa), non il prezzo alternativo.</p>
+        <p id="cart-message" class="message" role="status" aria-live="polite"></p>
+        <p id="cart-empty" class="empty-state">Il carrello è vuoto. Aggiungi prodotti dal catalogo.</p>
+        <section id="cart-items" class="cart-items" aria-label="Prodotti nel carrello"></section>
+        <section id="cart-summary" class="cart-summary" aria-label="Riepilogo prezzi" hidden>
+          <div><span>Articoli</span><strong id="cart-total-items">0</strong></div>
+          <div><span id="cart-total-label">Totale</span><strong id="cart-total-price">0,00 €</strong></div>
+          <p id="cart-unknown-prices" class="muted" hidden></p>
+          <button id="clear-cart-button" class="button button-danger" type="button">Svuota carrello</button>
+        </section>
       </main>
     </div>
 
