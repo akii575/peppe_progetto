@@ -62,6 +62,9 @@ const elementi = {
   importButton: document.getElementById("import-button"),
   jsonFile: document.getElementById("json-file"),
   importProgress: document.getElementById("import-progress"),
+  photoBatchButton: document.getElementById("photo-batch-button"),
+  photoBatchFiles: document.getElementById("photo-batch-files"),
+  photoBatchProgress: document.getElementById("photo-batch-progress"),
   addProductButton: document.getElementById("add-product-button"),
   deleteAllButton: document.getElementById("delete-all-button"),
   productDialog: document.getElementById("product-dialog"),
@@ -499,14 +502,12 @@ async function ridimensionaFoto(file) {
   return blob;
 }
 
-async function caricaFoto(file, idProdotto) {
-  elementi.photoStatus.textContent = "Preparazione foto...";
+async function caricaFotoCloudinary(file, idProdotto) {
   const fotoRidimensionata = await ridimensionaFoto(file);
   const dati = new FormData();
   dati.append("file", fotoRidimensionata, `${idProdotto}.jpg`);
   dati.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-  elementi.photoStatus.textContent = "Caricamento su Cloudinary...";
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), CLOUDINARY_UPLOAD_TIMEOUT_MS);
   let risposta;
@@ -536,8 +537,119 @@ async function caricaFoto(file, idProdotto) {
   if (!risultato.secure_url) {
     throw new Error("Cloudinary ha risposto senza un URL sicuro per la foto.");
   }
-  elementi.photoStatus.textContent = "Foto caricata su Cloudinary.";
   return { fotoUrl: risultato.secure_url, fotoPath: "" };
+}
+
+async function caricaFoto(file, idProdotto) {
+  elementi.photoStatus.textContent = "Preparazione foto...";
+  const risultato = await caricaFotoCloudinary(file, idProdotto);
+  elementi.photoStatus.textContent = "Foto caricata su Cloudinary.";
+  return risultato;
+}
+
+function abbinaFotoAProdotti(files) {
+  const prodottiPerId = new Map(prodotti.map((prodotto) => [prodotto.id, prodotto]));
+  const gruppiPerId = new Map();
+  const scartate = [];
+
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) {
+      scartate.push(`${file.name}: non è un’immagine.`);
+      continue;
+    }
+    const corrispondenza = file.name.match(/^(\d+)\.[^.]+$/);
+    if (!corrispondenza) {
+      scartate.push(`${file.name}: il nome deve essere un ID, per esempio 235.jpg.`);
+      continue;
+    }
+    const id = corrispondenza[1].replace(/^0+(?=\d)/, "");
+    const prodotto = prodottiPerId.get(id);
+    if (!prodotto) {
+      scartate.push(`${file.name}: nessun prodotto con ID ${id}.`);
+      continue;
+    }
+    const gruppo = gruppiPerId.get(id) || [];
+    gruppo.push({ file, prodotto });
+    gruppiPerId.set(id, gruppo);
+  }
+
+  const abbinate = [];
+  for (const [id, gruppo] of gruppiPerId) {
+    if (gruppo.length > 1) {
+      scartate.push(`Più immagini selezionate per l’ID ${id}; nessuna è stata caricata.`);
+      continue;
+    }
+    abbinate.push(gruppo[0]);
+  }
+  return { abbinate, scartate };
+}
+
+async function importaFotoInBlocco(files) {
+  if (!verificaConnessioneOperazione()) {
+    elementi.photoBatchFiles.value = "";
+    return;
+  }
+  if (!files.length) return;
+
+  const { abbinate, scartate } = abbinaFotoAProdotti(files);
+  if (!abbinate.length) {
+    const dettagli = scartate.slice(0, 4).join(" ");
+    mostraMessaggio(elementi.appMessage, `Nessuna foto abbinabile. ${dettagli}`);
+    elementi.photoBatchProgress.textContent = `Ignorate ${scartate.length} foto`;
+    elementi.photoBatchFiles.value = "";
+    return;
+  }
+
+  const giaConFoto = abbinate.filter(({ prodotto }) => prodotto.fotoUrl).length;
+  if (giaConFoto && !window.confirm(`${giaConFoto} prodotti hanno già una foto. I nuovi collegamenti la sostituiranno, ma le vecchie immagini resteranno su Cloudinary. Vuoi continuare?`)) {
+    mostraMessaggio(elementi.appMessage, "Operazione annullata", "avviso");
+    elementi.photoBatchFiles.value = "";
+    return;
+  }
+
+  impostaBarraOccupata(true);
+  elementi.photoBatchButton.disabled = true;
+  elementi.photoBatchProgress.textContent = `Foto elaborate 0/${abbinate.length}`;
+  mostraMessaggio(elementi.appMessage, "");
+  let prossima = 0;
+  let completate = 0;
+  let caricate = 0;
+  const errori = [];
+
+  async function lavora() {
+    while (prossima < abbinate.length) {
+      const corrente = abbinate[prossima];
+      prossima += 1;
+      try {
+        const { file, prodotto } = corrente;
+        const foto = await caricaFotoCloudinary(file, prodotto.id);
+        await setDoc(doc(db, "prodotti", prodotto.id), {
+          fotoUrl: foto.fotoUrl,
+          fotoPath: foto.fotoPath,
+          aggiornatoIl: serverTimestamp()
+        }, { merge: true });
+        caricate += 1;
+      } catch (errore) {
+        console.error(`Errore durante l’importazione della foto ${corrente.file.name}:`, errore);
+        errori.push(`${corrente.file.name}: ${errore.message || "caricamento non riuscito"}`);
+      } finally {
+        completate += 1;
+        elementi.photoBatchProgress.textContent = `Foto elaborate ${completate}/${abbinate.length}`;
+      }
+    }
+  }
+
+  try {
+    const numeroLavoratori = Math.min(3, abbinate.length);
+    await Promise.all(Array.from({ length: numeroLavoratori }, () => lavora()));
+    const riepilogo = `Foto collegate: ${caricate}/${abbinate.length}. Ignorate: ${scartate.length}. Errori: ${errori.length}.`;
+    const dettagli = [...scartate, ...errori].slice(0, 4).join(" ");
+    mostraMessaggio(elementi.appMessage, [riepilogo, dettagli].filter(Boolean).join(" "), errori.length || scartate.length ? "avviso" : "successo");
+    elementi.photoBatchProgress.textContent = `Completato: ${caricate}/${abbinate.length}`;
+  } finally {
+    impostaBarraOccupata(false);
+    elementi.photoBatchFiles.value = "";
+  }
 }
 
 function valoreNumerico(input, etichetta) {
@@ -649,6 +761,7 @@ function impostaBarraOccupata(occupata) {
   elementi.toolbar.querySelectorAll("button, select, input").forEach((controllo) => {
     controllo.disabled = occupata;
   });
+  elementi.photoBatchButton.disabled = occupata;
 }
 
 async function eliminaFotoDaStorage(percorso) {
@@ -923,6 +1036,14 @@ elementi.jsonFile.addEventListener("change", () => {
   if (file) importaDaJson(file);
 });
 elementi.deleteAllButton.addEventListener("click", eliminaTuttiProdotti);
+elementi.photoBatchButton.addEventListener("click", () => {
+  if (!verificaConnessioneOperazione()) return;
+  elementi.photoBatchFiles.click();
+});
+elementi.photoBatchFiles.addEventListener("change", () => {
+  const files = [...(elementi.photoBatchFiles.files || [])];
+  if (files.length) importaFotoInBlocco(files);
+});
 
 elementi.searchInput.addEventListener("input", () => {
   window.clearTimeout(timerRicerca);

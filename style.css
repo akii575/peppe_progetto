@@ -70,6 +70,11 @@ textarea { min-height: 88px; resize: vertical; }
 .button-delete-all:hover { border-color: #842c25; background: #842c25; }
 .toolbar-import { display: flex; align-items: center; gap: 8px; }
 .toolbar-import .muted { font-size: .82rem; }
+.photo-import-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 16px; padding: 13px 16px; border: 1px solid #eadcb8; border-radius: 14px; background: #fff9e9; }
+.photo-import-copy { display: grid; gap: 3px; }
+.photo-import-copy strong { color: #4e4634; }
+.photo-import-copy .muted, .photo-import-actions .muted { font-size: .82rem; }
+.photo-import-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .connection-message { margin-bottom: 8px; color: #9b5d13; font-size: .88rem; }
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 16px; }
 .product-card { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 5px 16px #26352f08; }
@@ -122,6 +127,8 @@ textarea { min-height: 88px; resize: vertical; }
   .toolbar-category select { width: 100%; }
   .toolbar .button { width: 100%; white-space: normal; }
   .toolbar-import { align-items: stretch; flex-direction: column; }
+  .photo-import-panel { align-items: stretch; flex-direction: column; }
+  .photo-import-actions { align-items: stretch; flex-direction: column; }
   .suggestion { grid-template-columns: 42px minmax(0, 1fr) auto; gap: 8px; }
   .suggestion img { width: 42px; height: 42px; }
 }
