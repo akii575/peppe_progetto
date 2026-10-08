@@ -28,6 +28,8 @@ La barra strumenti permette di filtrare per categoria, aggiungere prodotti, impo
 
 Ogni scheda prodotto ha il pulsante **Aggiungi al carrello**. L’icona accanto a **Esci** apre la vista carrello, dove puoi aumentare o diminuire le quantità, rimuovere articoli e vedere il totale. Il totale usa il prezzo standard `prezzo` (IVA inclusa) e non include `prezzoAlt`; gli articoli senza prezzo sono indicati ma non conteggiati nel totale. Il carrello è solo temporaneo nel browser: non viene salvato su Firestore o sul dispositivo, si svuota ricaricando la pagina o uscendo dall’account e non invia ordini né pagamenti.
 
+Toccando la foto o il contenuto di una scheda si apre il dettaglio del prodotto. Anche un suggerimento della ricerca apre lo stesso dettaglio, da cui puoi aggiungere il prodotto al carrello.
+
 Per provare il sito localmente, avvialo da un server statico (non aprire `index.html` direttamente come file), per esempio con l’estensione Live Server di VS Code. Non serve alcun comando di build.
 
 ### Problemi comuni

@@ -100,6 +100,8 @@ textarea { min-height: 88px; resize: vertical; }
 .connection-message { margin-bottom: 8px; color: #9b5d13; font-size: .88rem; }
 .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 16px; }
 .product-card { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 5px 16px #26352f08; }
+.product-card-content { cursor: pointer; }
+.product-card-content:focus-visible { outline: 3px solid var(--green); outline-offset: -3px; }
 .product-photo { display: block; width: 100%; height: 178px; background: #f4f0e5; object-fit: cover; }
 .product-photo-placeholder { display: grid; height: 178px; place-items: center; background: linear-gradient(135deg, #f5edda, #eef2e9); color: #87978a; font-size: 2.2rem; }
 .product-card-body { padding: 14px; }
@@ -137,6 +139,9 @@ textarea { min-height: 88px; resize: vertical; }
 .detail-facts dt { color: var(--muted); }
 .detail-facts dd { margin: 0; overflow-wrap: anywhere; }
 .detail-description { white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-actions { display: grid; gap: 8px; margin-top: 18px; }
+.detail-actions .button { width: 100%; }
+.detail-actions .message { margin-top: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 
 @media (max-width: 700px) {

@@ -190,11 +190,24 @@ function aggiornaCategorie() {
 function creaSchedaProdotto(prodotto) {
   const scheda = document.createElement("article");
   scheda.className = "product-card";
+  const contenuto = document.createElement("div");
+  contenuto.className = "product-card-content";
+  contenuto.setAttribute("role", "button");
+  contenuto.setAttribute("tabindex", "0");
+  contenuto.setAttribute("aria-haspopup", "dialog");
+  contenuto.setAttribute("aria-label", `Apri i dettagli di ${prodotto.nome || "prodotto"}`);
+  contenuto.addEventListener("click", () => apriDettaglio(prodotto));
+  contenuto.addEventListener("keydown", (evento) => {
+    if (evento.key === "Enter" || evento.key === " ") {
+      evento.preventDefault();
+      apriDettaglio(prodotto);
+    }
+  });
 
   if (prodotto.fotoUrl) {
-    scheda.append(creaImmagine(prodotto.fotoUrl, "product-photo", `Foto di ${prodotto.nome}`));
+    contenuto.append(creaImmagine(prodotto.fotoUrl, "product-photo", `Foto di ${prodotto.nome}`));
   } else {
-    scheda.append(creaPlaceholder());
+    contenuto.append(creaPlaceholder());
   }
 
   const corpo = document.createElement("div");
@@ -247,8 +260,8 @@ function creaSchedaProdotto(prodotto) {
   aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
   aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto));
   azioni.append(modifica, elimina, aggiungiAlCarrelloButton);
-  corpo.append(azioni);
-  scheda.append(corpo);
+  contenuto.append(corpo);
+  scheda.append(contenuto, azioni);
   return scheda;
 }
 
@@ -266,11 +279,11 @@ function filtraProdotti() {
   visibili.forEach((prodotto) => elementi.productList.append(creaSchedaProdotto(prodotto)));
 }
 
-function aggiungiAlCarrello(prodotto) {
+function aggiungiAlCarrello(prodotto, messaggio = elementi.appMessage) {
   const riga = carrello.get(prodotto.id);
   carrello.set(prodotto.id, { quantita: (riga?.quantita || 0) + 1 });
   aggiornaCarrello();
-  mostraMessaggio(elementi.appMessage, `${prodotto.nome} aggiunto al carrello.`, "successo");
+  mostraMessaggio(messaggio, `${prodotto.nome} aggiunto al carrello.`, "successo");
 }
 
 function creaRigaCarrello(prodotto, quantita) {
@@ -601,6 +614,19 @@ function apriDettaglio(prodotto) {
     caratteristiche.textContent = prodotto.caratteristiche;
     elementi.detailContent.append(caratteristiche);
   }
+  const azioni = document.createElement("div");
+  azioni.className = "detail-actions";
+  const aggiungiAlCarrelloButton = document.createElement("button");
+  aggiungiAlCarrelloButton.className = "button button-primary";
+  aggiungiAlCarrelloButton.type = "button";
+  aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
+  const messaggio = document.createElement("p");
+  messaggio.className = "message";
+  messaggio.setAttribute("role", "status");
+  messaggio.setAttribute("aria-live", "polite");
+  aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto, messaggio));
+  azioni.append(aggiungiAlCarrelloButton, messaggio);
+  elementi.detailContent.append(azioni);
   elementi.detailDialog.showModal();
 }
 
