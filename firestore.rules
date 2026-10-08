@@ -5,8 +5,51 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function amministratore() {
+      return autenticato()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.abilitato == true;
+    }
+
+    function destinatarioValido(destinatario) {
+      return destinatario is map
+        && destinatario.keys().hasAll([
+          'nome', 'telefono', 'email', 'indirizzo', 'cap', 'citta', 'provincia', 'note'
+        ])
+        && destinatario.keys().hasOnly([
+          'nome', 'telefono', 'email', 'indirizzo', 'cap', 'citta', 'provincia', 'note'
+        ])
+        && destinatario.nome is string
+        && destinatario.nome.size() > 0
+        && destinatario.nome.size() <= 140
+        && destinatario.telefono is string
+        && destinatario.telefono.size() > 0
+        && destinatario.telefono.size() <= 40
+        && destinatario.email is string
+        && destinatario.email.size() <= 180
+        && destinatario.indirizzo is string
+        && destinatario.indirizzo.size() > 0
+        && destinatario.indirizzo.size() <= 180
+        && destinatario.cap is string
+        && destinatario.cap.size() > 0
+        && destinatario.cap.size() <= 20
+        && destinatario.citta is string
+        && destinatario.citta.size() > 0
+        && destinatario.citta.size() <= 100
+        && destinatario.provincia is string
+        && destinatario.provincia.size() <= 80
+        && destinatario.note is string
+        && destinatario.note.size() <= 1000;
+    }
+
+    match /admins/{utenteId} {
+      allow get: if autenticato() && request.auth.uid == utenteId;
+      allow list, write: if false;
+    }
+
     match /prodotti/{prodottoId} {
-      allow read, write: if autenticato();
+      allow read: if autenticato();
+      allow create, update, delete: if amministratore();
     }
 
     match /carrelli/{utenteId} {
@@ -14,10 +57,26 @@ service cloud.firestore {
     }
 
     match /ordini/{ordineId} {
-      allow create: if autenticato() && request.resource.data.uid == request.auth.uid;
+      allow create: if autenticato()
+        && request.resource.data.keys().hasAll([
+          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.numero is string
+        && request.resource.data.numero.size() > 0
+        && request.resource.data.numero.size() <= 60
+        && destinatarioValido(request.resource.data.destinatario)
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100
+        && request.resource.data.totale is number
+        && request.resource.data.totale >= 0
+        && request.resource.data.creatoIl is timestamp;
       allow read: if autenticato() && resource.data.uid == request.auth.uid;
       allow update, delete: if false;
     }
-
   }
 }

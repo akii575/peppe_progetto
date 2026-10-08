@@ -8,17 +8,28 @@ Applicazione statica mobile-first per consultare e gestire il catalogo. Usa HTML
 2. Nel progetto fai clic su **Aggiungi app** e scegli l’app Web (`</>`).
 3. La configurazione Web del progetto `peppeprogetto-8afc8` è già inserita nel blocco `firebaseConfig` all’inizio di `app.js`. Se colleghi un altro progetto, sostituisci quei valori con la configurazione della sua app Web.
 
-Le chiavi di configurazione Firebase presenti nel frontend non sono segrete: sono visibili a chiunque apra il sito. È quindi essenziale pubblicare le regole di sicurezza indicate qui sotto: sono le regole a limitare i dati agli utenti autenticati.
+Le chiavi di configurazione Firebase presenti nel frontend non sono segrete: sono visibili a chiunque apra il sito. La protezione effettiva dipende dalle regole Firestore e dai ruoli descritti sotto.
 
 ## 2. Attivare i servizi
 
 1. In **Authentication > Metodo di accesso**, abilita **Email/Password**. Poi apri **Utenti > Aggiungi utente** e crea l’utente con la tua email e password. L’app non permette la registrazione pubblica.
-2. Apri **Firestore Database > Crea database**, scegli la modalità **produzione** e una regione europea (per esempio `eur3`). Dalla scheda **Regole**, incolla il contenuto aggiornato di `firestore.rules` e fai clic su **Pubblica**. Le regole permettono a ogni account di leggere e modificare solo il proprio carrello e di leggere i propri ordini; dopo ogni aggiornamento del file, ripubblica le regole da questa schermata.
+2. Apri **Firestore Database > Crea database**, scegli la modalità **produzione** e una regione europea (per esempio `eur3`). Configura le regole e l’account amministratore seguendo la sezione successiva.
 3. Per caricare le foto, crea un account Cloudinary e un preset unsigned in **Settings > Upload > Upload presets**. Il Cloud name `lgpus1ka` e il preset `peppe_progetto` sono già impostati all’inizio di `app.js`. Nel preset consenti solo JPEG, limita la dimensione a 2 MB e imposta la cartella `prodotti`, se queste opzioni sono disponibili. Non serve attivare Firebase Storage né pubblicare `storage.rules`.
 
 Gli upload unsigned non richiedono un segreto API nel browser, ma il preset è pubblico: chiunque lo conosca può tentare di caricare immagini. Limita formati e dimensioni nel preset e controlla periodicamente gli utilizzi. Il prodotto viene salvato su Firestore prima del caricamento della foto; se l’upload fallisce, i dati restano salvati e puoi riprovare la foto modificando il prodotto. Per mantenere il sito solo frontend, l’app non elimina le immagini da Cloudinary: quando elimini un prodotto o sostituisci la foto, il file remoto può restare nella libreria Cloudinary e va rimosso da lì manualmente.
 
-## 3. Pubblicare e usare
+## 3. Impostare le regole e l’amministratore
+
+Esegui questi passaggi nell’ordine indicato, così nessun account autenticato può auto-promuoversi amministratore:
+
+1. In **Firestore Database > Regole**, incolla il contenuto aggiornato del file `firestore.rules` e fai clic su **Pubblica**. Finché non aggiungi l’amministratore, gli account possono consultare e ordinare, ma nessuno può modificare il catalogo.
+2. In **Authentication > Utenti**, copia l’UID del tuo account.
+3. In **Firestore Database > Dati**, crea la raccolta `admins`. Al suo interno crea un documento con ID esattamente uguale all’UID copiato e aggiungi il campo `abilitato` di tipo **booleano** con valore `true`. Crea il documento dalla Console Firebase, non dall’app: le regole vietano ai client di modificare la raccolta `admins`.
+4. Pubblica il sito aggiornato. L’app verifica quel documento: l’account amministratore vede i comandi per gestire i prodotti; gli altri account restano in sola lettura e possono usare solo il proprio carrello.
+
+Le regole mantengono carrelli e ordini separati per UID e impediscono di modificare ordini già inviati. Ripubblica sempre `firestore.rules` dalla Console Firebase dopo ogni modifica. Le regole verificano la forma e la dimensione dei dati dell’ordine, ma un sito solo frontend non può garantire che prezzi e subtotali inviati non siano stati alterati: per ordini commerciali affidabili serve spostare il calcolo e la creazione dell’ordine in una Cloud Function o in un backend.
+
+## 4. Pubblicare e usare
 
 1. Pubblica la cartella trascinandola su [Netlify Drop](https://app.netlify.com/drop), oppure collega il repository a Vercel come sito statico.
 2. In **Firebase Authentication > Impostazioni > Domini autorizzati**, verifica che `localhost` sia presente per i test locali e aggiungi il dominio del sito pubblicato.

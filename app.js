@@ -25,6 +25,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   initializeFirestore,
   onSnapshot,
@@ -82,6 +83,7 @@ const elementi = {
   downloadShippingNoteButton: document.getElementById("download-shipping-note"),
   connectionMessage: document.getElementById("connection-message"),
   toolbar: document.querySelector(".toolbar"),
+  toolbarImport: document.querySelector(".toolbar-import"),
   categoryFilter: document.getElementById("category-filter"),
   categoryOptions: document.getElementById("category-options"),
   productCount: document.getElementById("product-count"),
@@ -133,6 +135,7 @@ let carrelloCaricato = false;
 let catalogoCaricato = false;
 let scritturaCarrello = Promise.resolve();
 let ordineCorrente = null;
+let utenteAmministratore = false;
 let suggerimentiVisibili = [];
 let indiceSuggerimento = -1;
 let timerRicerca = null;
@@ -149,6 +152,31 @@ function mostraMessaggio(elemento, testo, tipo = "errore") {
   elemento.textContent = testo;
   elemento.classList.toggle("message-success", tipo === "successo");
   elemento.classList.toggle("message-warning", tipo === "avviso");
+}
+
+function impostaPermessiCatalogo(amministratore) {
+  utenteAmministratore = amministratore;
+  elementi.addProductButton.hidden = !amministratore;
+  elementi.deleteAllButton.hidden = !amministratore;
+  elementi.toolbarImport.hidden = !amministratore;
+  if (catalogoCaricato) filtraProdotti();
+}
+
+async function caricaPermessiCatalogo(uid) {
+  impostaPermessiCatalogo(false);
+  try {
+    const amministratore = await getDoc(doc(db, "admins", uid));
+    if (utenteCorrente?.uid !== uid) return;
+    impostaPermessiCatalogo(amministratore.exists() && amministratore.data().abilitato === true);
+    if (!utenteAmministratore) {
+      mostraMessaggio(elementi.appMessage, "Modalità sola lettura: questo account non è abilitato a modificare il catalogo.", "avviso");
+    }
+  } catch (errore) {
+    console.error("Errore durante la verifica dei permessi amministratore:", errore);
+    if (utenteCorrente?.uid !== uid) return;
+    impostaPermessiCatalogo(false);
+    mostraMessaggio(elementi.appMessage, "Non è stato possibile verificare i permessi. Catalogo in sola lettura.");
+  }
 }
 
 function formattaPrezzo(prezzo) {
@@ -263,22 +291,25 @@ function creaSchedaProdotto(prodotto) {
 
   const azioni = document.createElement("div");
   azioni.className = "card-actions";
-  const modifica = document.createElement("button");
-  modifica.className = "button button-secondary";
-  modifica.type = "button";
-  modifica.textContent = "Modifica";
-  modifica.addEventListener("click", () => apriFormProdotto(prodotto));
-  const elimina = document.createElement("button");
-  elimina.className = "button button-danger";
-  elimina.type = "button";
-  elimina.textContent = "Elimina";
-  elimina.addEventListener("click", () => eliminaProdotto(prodotto));
+  if (utenteAmministratore) {
+    const modifica = document.createElement("button");
+    modifica.className = "button button-secondary";
+    modifica.type = "button";
+    modifica.textContent = "Modifica";
+    modifica.addEventListener("click", () => apriFormProdotto(prodotto));
+    const elimina = document.createElement("button");
+    elimina.className = "button button-danger";
+    elimina.type = "button";
+    elimina.textContent = "Elimina";
+    elimina.addEventListener("click", () => eliminaProdotto(prodotto));
+    azioni.append(modifica, elimina);
+  }
   const aggiungiAlCarrelloButton = document.createElement("button");
   aggiungiAlCarrelloButton.className = "button button-primary button-cart";
   aggiungiAlCarrelloButton.type = "button";
   aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
   aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto));
-  azioni.append(modifica, elimina, aggiungiAlCarrelloButton);
+  azioni.append(aggiungiAlCarrelloButton);
   contenuto.append(corpo);
   scheda.append(contenuto, azioni);
   return scheda;
@@ -1550,6 +1581,7 @@ onAuthStateChanged(auth, (utente) => {
     mostraCarrello(false);
     iniziaAscolto();
     iniziaAscoltoCarrello(utente.uid);
+    caricaPermessiCatalogo(utente.uid);
   }
   else {
     if (interrompiAscolto) interrompiAscolto();
@@ -1563,6 +1595,7 @@ onAuthStateChanged(auth, (utente) => {
     ordineCorrente = null;
     prodotti = [];
     carrello.clear();
+    impostaPermessiCatalogo(false);
     elementi.productList.replaceChildren();
     elementi.productCount.textContent = "Accedi per vedere il catalogo";
     mostraCarrello(false);
