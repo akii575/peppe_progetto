@@ -53,10 +53,14 @@ const elementi = {
   loginForm: document.getElementById("login-form"),
   loginMessage: document.getElementById("login-message"),
   appView: document.getElementById("app-view"),
-  topbarInner: document.querySelector(".topbar-inner"),
+  brandHome: document.getElementById("brand-home"),
+  mobileMenu: document.getElementById("mobile-menu"),
   logoutButton: document.getElementById("logout-button"),
+  mobileLogoutButton: document.getElementById("mobile-logout-button"),
   orderDashboardButton: document.getElementById("order-dashboard-button"),
+  mobileOrderDashboardButton: document.getElementById("mobile-order-dashboard-button"),
   cartButton: document.getElementById("cart-button"),
+  mobileCartButton: document.getElementById("mobile-cart-button"),
   cartCount: document.getElementById("cart-count"),
   catalogPage: document.getElementById("catalog-page"),
   cartPage: document.getElementById("cart-page"),
@@ -178,12 +182,13 @@ function mostraMessaggio(elemento, testo, tipo = "errore") {
 
 function impostaPermessiCatalogo(amministratore) {
   utenteAmministratore = amministratore;
-  elementi.topbarInner.classList.toggle("cart-disabled", !amministratore);
   elementi.orderDashboardButton.hidden = !amministratore;
+  elementi.mobileOrderDashboardButton.hidden = !amministratore;
   elementi.addProductButton.hidden = !amministratore;
   elementi.deleteAllButton.hidden = !amministratore;
   elementi.toolbarImport.hidden = !amministratore;
   elementi.cartButton.hidden = !amministratore;
+  elementi.mobileCartButton.hidden = !amministratore;
   if (!amministratore) {
     if (interrompiCarrelloAscolto) interrompiCarrelloAscolto();
     interrompiCarrelloAscolto = null;
@@ -202,7 +207,7 @@ function impostaPermessiCatalogo(amministratore) {
     elementi.ordersList.replaceChildren();
     if (elementi.orderEditDialog.open) elementi.orderEditDialog.close();
     elementi.orderEditForm.reset();
-    elementi.topbarInner.classList.remove("orders-open", "cart-open");
+    elementi.mobileMenu.open = false;
     mostraCarrello(false);
     aggiornaCarrello();
   }
@@ -510,8 +515,6 @@ function mostraCarrello(aperto) {
   elementi.orderSummaryPage.hidden = true;
   elementi.ordersPage.hidden = true;
   elementi.searchArea.hidden = aperto;
-  elementi.topbarInner.classList.remove("orders-open");
-  elementi.topbarInner.classList.toggle("cart-open", aperto);
   elementi.cartButton.setAttribute("aria-label", aperto ? "Torna al catalogo" : `Apri carrello, ${elementi.cartCount.textContent} articoli`);
   chiudiSuggerimenti();
   if (aperto) aggiornaCarrello();
@@ -524,8 +527,6 @@ function mostraDashboardOrdini(aperto) {
   elementi.orderSummaryPage.hidden = true;
   elementi.ordersPage.hidden = !aperto;
   elementi.searchArea.hidden = aperto;
-  elementi.topbarInner.classList.remove("cart-open");
-  elementi.topbarInner.classList.toggle("orders-open", aperto);
   chiudiSuggerimenti();
   if (aperto) mostraOrdini();
 }
@@ -1081,8 +1082,6 @@ function mostraRiepilogoOrdine(ordine) {
   elementi.ordersPage.hidden = true;
   elementi.orderSummaryPage.hidden = false;
   elementi.searchArea.hidden = true;
-  elementi.topbarInner.classList.remove("orders-open");
-  elementi.topbarInner.classList.add("cart-open");
   elementi.cartButton.setAttribute("aria-label", "Apri il carrello");
   chiudiSuggerimenti();
 
@@ -2033,8 +2032,26 @@ onAuthStateChanged(auth, (utente) => {
   }
 });
 
+elementi.brandHome.addEventListener("click", (evento) => {
+  evento.preventDefault();
+  elementi.mobileMenu.open = false;
+  mostraCarrello(false);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
 elementi.cartButton.addEventListener("click", () => mostraCarrello(elementi.cartPage.hidden));
+elementi.mobileCartButton.addEventListener("click", () => {
+  elementi.mobileMenu.open = false;
+  mostraCarrello(true);
+});
 elementi.orderDashboardButton.addEventListener("click", () => mostraDashboardOrdini(true));
+elementi.mobileOrderDashboardButton.addEventListener("click", () => {
+  elementi.mobileMenu.open = false;
+  mostraDashboardOrdini(true);
+});
+elementi.mobileLogoutButton.addEventListener("click", () => {
+  elementi.mobileMenu.open = false;
+  elementi.logoutButton.click();
+});
 elementi.backToCatalogButton.addEventListener("click", () => mostraCarrello(false));
 elementi.ordersBackToCatalogButton.addEventListener("click", () => mostraDashboardOrdini(false));
 elementi.ordersList.addEventListener("click", (evento) => {
@@ -2141,6 +2158,12 @@ elementi.searchInput.addEventListener("keydown", (evento) => {
 });
 document.addEventListener("click", (evento) => {
   if (!elementi.searchArea.contains(evento.target)) chiudiSuggerimenti();
+  if (!elementi.mobileMenu.contains(evento.target)) elementi.mobileMenu.open = false;
+});
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && elementi.mobileMenu.open) {
+    elementi.mobileMenu.open = false;
+  }
 });
 elementi.searchInput.addEventListener("focus", () => {
   if (elementi.searchInput.value.trim()) mostraSuggerimenti();

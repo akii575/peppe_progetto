@@ -29,18 +29,31 @@
     <div id="app-view" hidden>
       <header class="topbar">
         <div class="topbar-inner">
-          <a class="brand" href="#" aria-label="Catalogo Dolcevolta">Dolcevolta</a>
+          <a id="brand-home" class="brand" href="#" aria-label="Torna al catalogo Dolcevolta">Dolcevolta</a>
           <div class="search-area" id="search-area">
             <label class="visually-hidden" for="search-input">Cerca per nome o codice</label>
             <input id="search-input" type="search" placeholder="Cerca nome o codice..." autocomplete="off" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">
             <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
           </div>
-          <button id="order-dashboard-button" class="button button-quiet" type="button" hidden>Ordini</button>
-          <button id="cart-button" class="button button-quiet cart-button" type="button" aria-label="Apri carrello" hidden>
-            <span aria-hidden="true">🛒</span>
-            <span id="cart-count" class="cart-count">0</span>
-          </button>
-          <button id="logout-button" class="button button-quiet" type="button">Esci</button>
+          <nav class="header-actions" aria-label="Azioni account">
+            <button id="order-dashboard-button" class="button button-quiet desktop-action" type="button" hidden>Ordini</button>
+            <button id="cart-button" class="button button-quiet cart-button desktop-action" type="button" aria-label="Apri carrello" hidden>
+              <span aria-hidden="true">🛒</span>
+              <span id="cart-count" class="cart-count">0</span>
+            </button>
+            <button id="logout-button" class="button button-quiet desktop-action" type="button">Esci</button>
+            <details id="mobile-menu" class="mobile-menu">
+              <summary class="button button-secondary" aria-label="Apri menu account">
+                <span aria-hidden="true">☰</span>
+                <span>Menu</span>
+              </summary>
+              <div class="mobile-menu-panel">
+                <button id="mobile-order-dashboard-button" class="button button-quiet" type="button" hidden>Ordini</button>
+                <button id="mobile-cart-button" class="button button-quiet" type="button" hidden>🛒 Carrello</button>
+                <button id="mobile-logout-button" class="button button-quiet" type="button">Esci</button>
+              </div>
+            </details>
+          </nav>
         </div>
       </header>
 
