@@ -42,6 +42,31 @@ service cloud.firestore {
         && destinatario.note.size() <= 1000;
     }
 
+    function ordineValido(ordine) {
+      return ordine is map
+        && ordine.keys().hasAll([
+          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl', 'stato'
+        ])
+        && ordine.keys().hasOnly([
+          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl',
+          'stato', 'aggiornatoIl', 'annullatoIl'
+        ])
+        && ordine.uid is string
+        && ordine.numero is string
+        && ordine.numero.size() > 0
+        && ordine.numero.size() <= 60
+        && destinatarioValido(ordine.destinatario)
+        && ordine.items is list
+        && ordine.items.size() > 0
+        && ordine.items.size() <= 100
+        && ordine.totale is number
+        && ordine.totale >= 0
+        && ordine.creatoIl is timestamp
+        && ordine.stato in ['ricevuto', 'annullato']
+        && (!ordine.keys().hasAny(['aggiornatoIl']) || ordine.aggiornatoIl is timestamp)
+        && (!ordine.keys().hasAny(['annullatoIl']) || ordine.annullatoIl is timestamp);
+    }
+
     match /admins/{utenteId} {
       allow get: if autenticato() && request.auth.uid == utenteId;
       allow list, write: if false;
@@ -53,30 +78,31 @@ service cloud.firestore {
     }
 
     match /carrelli/{utenteId} {
-      allow read, write: if autenticato() && request.auth.uid == utenteId;
+      allow read, write: if amministratore() && request.auth.uid == utenteId;
     }
 
     match /ordini/{ordineId} {
-      allow create: if autenticato()
-        && request.resource.data.keys().hasAll([
-          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'uid', 'numero', 'destinatario', 'items', 'totale', 'creatoIl'
-        ])
+      allow create: if amministratore()
+        && ordineValido(request.resource.data)
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.numero is string
-        && request.resource.data.numero.size() > 0
-        && request.resource.data.numero.size() <= 60
-        && destinatarioValido(request.resource.data.destinatario)
-        && request.resource.data.items is list
-        && request.resource.data.items.size() > 0
-        && request.resource.data.items.size() <= 100
-        && request.resource.data.totale is number
-        && request.resource.data.totale >= 0
-        && request.resource.data.creatoIl is timestamp;
-      allow read: if autenticato() && resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
+        && request.resource.data.stato == 'ricevuto'
+        && !request.resource.data.keys().hasAny(['aggiornatoIl', 'annullatoIl']);
+      allow read: if amministratore();
+      allow update: if amministratore()
+        && ordineValido(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.numero == resource.data.numero
+        && request.resource.data.creatoIl == resource.data.creatoIl
+        && resource.data.get('stato', 'ricevuto') != 'annullato'
+        && (
+          request.resource.data.stato == resource.data.get('stato', 'ricevuto')
+          || request.resource.data.stato == 'annullato'
+        )
+        && (
+          request.resource.data.stato != 'annullato'
+          || request.resource.data.keys().hasAny(['annullatoIl'])
+        );
+      allow delete: if false;
     }
   }
 }

@@ -33,6 +33,7 @@ import {
   persistentMultipleTabManager,
   serverTimestamp,
   setDoc,
+  updateDoc,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
@@ -54,11 +55,28 @@ const elementi = {
   appView: document.getElementById("app-view"),
   topbarInner: document.querySelector(".topbar-inner"),
   logoutButton: document.getElementById("logout-button"),
+  orderDashboardButton: document.getElementById("order-dashboard-button"),
   cartButton: document.getElementById("cart-button"),
   cartCount: document.getElementById("cart-count"),
   catalogPage: document.getElementById("catalog-page"),
   cartPage: document.getElementById("cart-page"),
   orderSummaryPage: document.getElementById("order-summary-page"),
+  ordersPage: document.getElementById("orders-page"),
+  ordersBackToCatalogButton: document.getElementById("orders-back-to-catalog"),
+  ordersList: document.getElementById("orders-list"),
+  ordersCount: document.getElementById("orders-count"),
+  ordersMessage: document.getElementById("orders-message"),
+  orderStatusFilter: document.getElementById("order-status-filter"),
+  orderEditDialog: document.getElementById("order-edit-dialog"),
+  orderEditForm: document.getElementById("order-edit-form"),
+  orderEditId: document.getElementById("order-edit-id"),
+  orderEditTitle: document.getElementById("order-edit-title"),
+  orderEditMessage: document.getElementById("order-edit-message"),
+  orderEditItems: document.getElementById("order-edit-items"),
+  orderAddProductSelect: document.getElementById("order-add-product-select"),
+  orderAddProductButton: document.getElementById("order-add-product-button"),
+  orderEditTotal: document.getElementById("order-edit-total"),
+  saveOrderButton: document.getElementById("save-order-button"),
   backToCatalogButton: document.getElementById("back-to-catalog"),
   orderBackToCatalogButton: document.getElementById("order-back-to-catalog"),
   cartItems: document.getElementById("cart-items"),
@@ -122,6 +140,7 @@ const elementi = {
 };
 
 const prodottiRef = collection(db, "prodotti");
+const ordiniRef = collection(db, "ordini");
 const formatterPrezzo = new Intl.NumberFormat("it-IT", {
   style: "currency",
   currency: "EUR"
@@ -130,11 +149,14 @@ let prodotti = [];
 let carrello = new Map();
 let interrompiAscolto = null;
 let interrompiCarrelloAscolto = null;
+let interrompiOrdiniAscolto = null;
 let utenteCorrente = null;
 let carrelloCaricato = false;
 let catalogoCaricato = false;
 let scritturaCarrello = Promise.resolve();
 let ordineCorrente = null;
+let ordini = [];
+let righeOrdineInModifica = [];
 let utenteAmministratore = false;
 let suggerimentiVisibili = [];
 let indiceSuggerimento = -1;
@@ -156,9 +178,34 @@ function mostraMessaggio(elemento, testo, tipo = "errore") {
 
 function impostaPermessiCatalogo(amministratore) {
   utenteAmministratore = amministratore;
+  elementi.topbarInner.classList.toggle("cart-disabled", !amministratore);
+  elementi.orderDashboardButton.hidden = !amministratore;
   elementi.addProductButton.hidden = !amministratore;
   elementi.deleteAllButton.hidden = !amministratore;
   elementi.toolbarImport.hidden = !amministratore;
+  elementi.cartButton.hidden = !amministratore;
+  if (!amministratore) {
+    if (interrompiCarrelloAscolto) interrompiCarrelloAscolto();
+    interrompiCarrelloAscolto = null;
+    if (interrompiOrdiniAscolto) interrompiOrdiniAscolto();
+    interrompiOrdiniAscolto = null;
+    ordini = [];
+    carrello.clear();
+    carrelloCaricato = false;
+    scritturaCarrello = Promise.resolve();
+    elementi.cartPage.hidden = true;
+    elementi.orderSummaryPage.hidden = true;
+    elementi.ordersPage.hidden = true;
+    elementi.cartMessage.textContent = "";
+    elementi.ordersMessage.textContent = "";
+    elementi.ordersCount.textContent = "Storico ordini non disponibile";
+    elementi.ordersList.replaceChildren();
+    if (elementi.orderEditDialog.open) elementi.orderEditDialog.close();
+    elementi.orderEditForm.reset();
+    elementi.topbarInner.classList.remove("orders-open", "cart-open");
+    mostraCarrello(false);
+    aggiornaCarrello();
+  }
   if (catalogoCaricato) filtraProdotti();
 }
 
@@ -167,18 +214,16 @@ async function caricaPermessiCatalogo(uid) {
   try {
     const amministratore = await getDoc(doc(db, "admins", uid));
     if (utenteCorrente?.uid !== uid) return;
-    impostaPermessiCatalogo(amministratore.exists() && amministratore.data().abilitato === true);
-    if (!utenteAmministratore) {
-      mostraMessaggio(elementi.appMessage, "Modalità sola lettura: questo account non è abilitato a modificare il catalogo.", "avviso");
+    const abilitato = amministratore.exists() && amministratore.data().abilitato === true;
+    impostaPermessiCatalogo(abilitato);
+    if (abilitato) {
+      iniziaAscoltoCarrello(uid);
+      iniziaAscoltoOrdini();
     }
   } catch (errore) {
     console.error("Errore durante la verifica dei permessi amministratore:", errore);
     if (utenteCorrente?.uid !== uid) return;
     impostaPermessiCatalogo(false);
-    const dettaglio = errore?.code === "permission-denied"
-      ? `Firestore ha negato la lettura dei permessi. Verifica che le regole siano pubblicate nel database (default) del progetto peppeprogetto-8afc8 e che il documento admins abbia come ID questo UID esatto: ${uid}.`
-      : "Verifica la connessione e riprova.";
-    mostraMessaggio(elementi.appMessage, `Non è stato possibile verificare i permessi: ${dettaglio} Catalogo in sola lettura.`);
   }
 }
 
@@ -307,12 +352,14 @@ function creaSchedaProdotto(prodotto) {
     elimina.addEventListener("click", () => eliminaProdotto(prodotto));
     azioni.append(modifica, elimina);
   }
-  const aggiungiAlCarrelloButton = document.createElement("button");
-  aggiungiAlCarrelloButton.className = "button button-primary button-cart";
-  aggiungiAlCarrelloButton.type = "button";
-  aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
-  aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto));
-  azioni.append(aggiungiAlCarrelloButton);
+  if (utenteAmministratore) {
+    const aggiungiAlCarrelloButton = document.createElement("button");
+    aggiungiAlCarrelloButton.className = "button button-primary button-cart";
+    aggiungiAlCarrelloButton.type = "button";
+    aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
+    aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto));
+    azioni.append(aggiungiAlCarrelloButton);
+  }
   contenuto.append(corpo);
   scheda.append(contenuto, azioni);
   return scheda;
@@ -333,6 +380,7 @@ function filtraProdotti() {
 }
 
 async function aggiungiAlCarrello(prodotto, messaggio = elementi.appMessage) {
+  if (!utenteAmministratore) return;
   if (!carrelloCaricato) {
     mostraMessaggio(messaggio, "Il carrello del tuo account è ancora in caricamento. Riprova tra poco.", "avviso");
     return;
@@ -456,14 +504,382 @@ function aggiornaCarrello() {
 }
 
 function mostraCarrello(aperto) {
+  if (aperto && !utenteAmministratore) return;
   elementi.catalogPage.hidden = aperto;
   elementi.cartPage.hidden = !aperto;
   elementi.orderSummaryPage.hidden = true;
+  elementi.ordersPage.hidden = true;
   elementi.searchArea.hidden = aperto;
+  elementi.topbarInner.classList.remove("orders-open");
   elementi.topbarInner.classList.toggle("cart-open", aperto);
   elementi.cartButton.setAttribute("aria-label", aperto ? "Torna al catalogo" : `Apri carrello, ${elementi.cartCount.textContent} articoli`);
   chiudiSuggerimenti();
   if (aperto) aggiornaCarrello();
+}
+
+function mostraDashboardOrdini(aperto) {
+  if (aperto && !utenteAmministratore) return;
+  elementi.catalogPage.hidden = aperto;
+  elementi.cartPage.hidden = true;
+  elementi.orderSummaryPage.hidden = true;
+  elementi.ordersPage.hidden = !aperto;
+  elementi.searchArea.hidden = aperto;
+  elementi.topbarInner.classList.remove("cart-open");
+  elementi.topbarInner.classList.toggle("orders-open", aperto);
+  chiudiSuggerimenti();
+  if (aperto) mostraOrdini();
+}
+
+function dataOrdineInMillisecondi(valore) {
+  const data = typeof valore?.toDate === "function"
+    ? valore.toDate()
+    : valore instanceof Date ? valore : null;
+  return data && Number.isFinite(data.getTime()) ? data.getTime() : 0;
+}
+
+function formattaDataOrdine(valore) {
+  const millisecondi = dataOrdineInMillisecondi(valore);
+  return millisecondi
+    ? new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short" }).format(millisecondi)
+    : "Data non disponibile";
+}
+
+function statoOrdine(ordine) {
+  return ordine.stato === "annullato" ? "annullato" : "ricevuto";
+}
+
+function creaInfoOrdine(etichetta, valore) {
+  const contenitore = document.createElement("div");
+  const titolo = document.createElement("strong");
+  titolo.textContent = etichetta;
+  const testo = document.createElement("span");
+  testo.textContent = valore || "—";
+  contenitore.append(titolo, testo);
+  return contenitore;
+}
+
+function creaSchedaOrdine(ordine) {
+  const scheda = document.createElement("article");
+  scheda.className = "order-card";
+  const destinatario = ordine.destinatario || {};
+  const status = statoOrdine(ordine);
+  const intestazione = document.createElement("div");
+  intestazione.className = "order-card-heading";
+  const titolo = document.createElement("div");
+  const numero = document.createElement("h2");
+  numero.textContent = ordine.numero || "Ordine senza numero";
+  const meta = document.createElement("div");
+  meta.className = "order-card-meta";
+  meta.textContent = `Ricevuto il ${formattaDataOrdine(ordine.creatoIl)}`;
+  titolo.append(numero, meta);
+  const etichettaStato = document.createElement("span");
+  etichettaStato.className = `order-status${status === "annullato" ? " cancelled" : ""}`;
+  etichettaStato.textContent = status === "annullato" ? "Annullato" : "Ricevuto";
+  intestazione.append(titolo, etichettaStato);
+
+  const items = Array.isArray(ordine.items) ? ordine.items : [];
+  const riepilogo = document.createElement("div");
+  riepilogo.className = "order-card-summary";
+  riepilogo.append(
+    creaInfoOrdine("Cliente", destinatario.nome),
+    creaInfoOrdine("Telefono", destinatario.telefono),
+    creaInfoOrdine("Destinazione", [destinatario.indirizzo, destinatario.cap, destinatario.citta, destinatario.provincia].filter(Boolean).join(", ")),
+    creaInfoOrdine("Totale", formattaPrezzo(ordine.totale)),
+    creaInfoOrdine("Articoli", String(items.reduce((totale, articolo) => totale + (Number(articolo.quantita) || 0), 0)))
+  );
+
+  const dettagli = document.createElement("details");
+  dettagli.className = "order-card-details";
+  const apriDettagli = document.createElement("summary");
+  apriDettagli.textContent = "Dettagli destinatario e prodotti";
+  const note = document.createElement("p");
+  note.className = "muted";
+  note.textContent = `Email: ${destinatario.email || "—"} · Note: ${destinatario.note || "—"}`;
+  const elenco = document.createElement("ul");
+  items.forEach((articolo) => {
+    const riga = document.createElement("li");
+    const subtotale = typeof articolo.subtotale === "number"
+      ? articolo.subtotale
+      : Number(articolo.prezzo) * Number(articolo.quantita);
+    riga.textContent = `${articolo.nome || "Prodotto"}${articolo.codice ? ` (${articolo.codice})` : ""} · ${articolo.quantita || 0} × ${formattaPrezzo(articolo.prezzo)} = ${formattaPrezzo(subtotale)}`;
+    elenco.append(riga);
+  });
+  dettagli.append(apriDettagli, note, elenco);
+  scheda.append(intestazione, riepilogo, dettagli);
+
+  if (status !== "annullato") {
+    const azioni = document.createElement("div");
+    azioni.className = "order-card-actions";
+    const modifica = document.createElement("button");
+    modifica.className = "button button-secondary";
+    modifica.type = "button";
+    modifica.textContent = "Modifica ordine";
+    modifica.dataset.orderAction = "modifica";
+    modifica.dataset.orderId = ordine.id;
+    const annulla = document.createElement("button");
+    annulla.className = "button button-danger";
+    annulla.type = "button";
+    annulla.textContent = "Annulla ordine";
+    annulla.dataset.orderAction = "annulla";
+    annulla.dataset.orderId = ordine.id;
+    azioni.append(modifica, annulla);
+    scheda.append(azioni);
+  }
+  return scheda;
+}
+
+function mostraOrdini() {
+  const filtro = elementi.orderStatusFilter.value;
+  const ordinati = [...ordini].sort((a, b) =>
+    dataOrdineInMillisecondi(b.creatoIl) - dataOrdineInMillisecondi(a.creatoIl)
+  );
+  const visibili = ordinati.filter((ordine) => !filtro || statoOrdine(ordine) === filtro);
+  elementi.ordersCount.textContent = `${visibili.length} ${visibili.length === 1 ? "ordine" : "ordini"}`;
+  if (!visibili.length) {
+    const vuoto = document.createElement("p");
+    vuoto.className = "empty-state";
+    vuoto.textContent = ordini.length
+      ? "Nessun ordine corrisponde al filtro selezionato."
+      : "Non ci sono ordini nello storico.";
+    elementi.ordersList.replaceChildren(vuoto);
+    return;
+  }
+  elementi.ordersList.replaceChildren(...visibili.map(creaSchedaOrdine));
+}
+
+function iniziaAscoltoOrdini() {
+  if (interrompiOrdiniAscolto) interrompiOrdiniAscolto();
+  elementi.ordersCount.textContent = "Caricamento ordini...";
+  interrompiOrdiniAscolto = onSnapshot(ordiniRef, (istantanea) => {
+    if (!utenteAmministratore) return;
+    ordini = istantanea.docs.map((documento) => ({ ...documento.data(), id: documento.id }));
+    mostraOrdini();
+    if (!istantanea.metadata.fromCache) elementi.ordersMessage.textContent = "";
+  }, (errore) => {
+    console.error("Errore durante il caricamento dello storico ordini:", errore);
+    mostraMessaggio(elementi.ordersMessage, errore.code === "permission-denied"
+      ? "Permesso negato: pubblica le nuove regole Firestore per gli ordini."
+      : "Non è stato possibile caricare lo storico ordini. Controlla la connessione e riprova.");
+    elementi.ordersCount.textContent = "Storico non disponibile";
+  });
+}
+
+function erroreOperazioneOrdine(errore) {
+  if (!navigator.onLine || errore?.code === "unavailable") {
+    return "Connettiti a internet per modificare gli ordini.";
+  }
+  if (errore?.code === "permission-denied") {
+    return "Permesso negato: verifica che le regole Firestore aggiornate siano pubblicate.";
+  }
+  return "Non è stato possibile salvare le modifiche. Riprova.";
+}
+
+async function annullaOrdine(ordine, pulsante) {
+  if (statoOrdine(ordine) === "annullato") return;
+  if (!window.confirm(`Vuoi annullare l'ordine ${ordine.numero || ""}? Lo storico verrà conservato.`)) return;
+  if (!navigator.onLine) {
+    mostraMessaggio(elementi.ordersMessage, "Connettiti a internet per modificare gli ordini.");
+    return;
+  }
+  pulsante.disabled = true;
+  try {
+    await updateDoc(doc(db, "ordini", ordine.id), {
+      stato: "annullato",
+      annullatoIl: serverTimestamp(),
+      aggiornatoIl: serverTimestamp()
+    });
+    mostraMessaggio(elementi.ordersMessage, `Ordine ${ordine.numero || ""} annullato.`, "successo");
+  } catch (errore) {
+    console.error("Errore durante l'annullamento dell'ordine:", errore);
+    mostraMessaggio(elementi.ordersMessage, erroreOperazioneOrdine(errore));
+  } finally {
+    pulsante.disabled = false;
+  }
+}
+
+function popolaSelettoreProdottiOrdine() {
+  const opzioni = [new Option("Seleziona dal catalogo", "")];
+  prodotti.forEach((prodotto) => {
+    const opzione = new Option(
+      `${prodotto.nome || "Prodotto"} · ${prodotto.codice || "senza codice"} · ${formattaPrezzo(prodotto.prezzo)}`,
+      prodotto.id
+    );
+    opzione.disabled = typeof prodotto.prezzo !== "number" || !Number.isFinite(prodotto.prezzo) || prodotto.prezzo < 0;
+    opzioni.push(opzione);
+  });
+  elementi.orderAddProductSelect.replaceChildren(...opzioni);
+}
+
+function aggiornaTotaleEditorOrdine() {
+  const quantitaInput = [...elementi.orderEditItems.querySelectorAll("[data-order-item-quantity]")];
+  let valido = righeOrdineInModifica.length > 0 && quantitaInput.length === righeOrdineInModifica.length;
+  let totale = 0;
+  quantitaInput.forEach((input, indice) => {
+    const quantita = Number(input.value);
+    const prezzo = righeOrdineInModifica[indice].prezzo;
+    if (!Number.isInteger(quantita) || quantita < 1 || !Number.isFinite(prezzo) || prezzo < 0) {
+      valido = false;
+    } else {
+      righeOrdineInModifica[indice].quantita = quantita;
+      totale += prezzo * quantita;
+    }
+  });
+  elementi.orderEditTotal.textContent = `Totale ordine: ${formattaPrezzo(totale)}`;
+  elementi.saveOrderButton.disabled = !valido;
+}
+
+function renderRigheEditorOrdine() {
+  if (!righeOrdineInModifica.length) {
+    const vuoto = document.createElement("p");
+    vuoto.className = "muted";
+    vuoto.textContent = "L'ordine deve contenere almeno un prodotto.";
+    elementi.orderEditItems.replaceChildren(vuoto);
+    aggiornaTotaleEditorOrdine();
+    return;
+  }
+  const righe = righeOrdineInModifica.map((articolo, indice) => {
+    const riga = document.createElement("div");
+    riga.className = "order-edit-line";
+    const descrizione = document.createElement("div");
+    descrizione.className = "order-edit-line-name";
+    descrizione.textContent = articolo.nome || "Prodotto";
+    const codice = document.createElement("small");
+    codice.textContent = `${articolo.codice || "Senza codice"} · ${formattaPrezzo(articolo.prezzo)} cad.`;
+    descrizione.append(codice);
+    const quantita = document.createElement("input");
+    quantita.type = "number";
+    quantita.min = "1";
+    quantita.step = "1";
+    quantita.required = true;
+    quantita.value = String(articolo.quantita);
+    quantita.setAttribute("aria-label", `Quantità di ${articolo.nome || "prodotto"}`);
+    quantita.dataset.orderItemQuantity = String(indice);
+    const rimuovi = document.createElement("button");
+    rimuovi.className = "button button-danger";
+    rimuovi.type = "button";
+    rimuovi.textContent = "Rimuovi";
+    rimuovi.dataset.removeOrderItem = String(indice);
+    riga.append(descrizione, quantita, rimuovi);
+    return riga;
+  });
+  elementi.orderEditItems.replaceChildren(...righe);
+  aggiornaTotaleEditorOrdine();
+}
+
+function apriModificaOrdine(ordine) {
+  if (!utenteAmministratore || statoOrdine(ordine) === "annullato") return;
+  elementi.orderEditForm.reset();
+  mostraMessaggio(elementi.orderEditMessage, "");
+  elementi.orderEditId.value = ordine.id;
+  elementi.orderEditTitle.textContent = `Modifica ${ordine.numero || "ordine"}`;
+  const destinatario = ordine.destinatario || {};
+  [
+    ["edit-customer-name", destinatario.nome],
+    ["edit-customer-phone", destinatario.telefono],
+    ["edit-customer-email", destinatario.email],
+    ["edit-customer-address", destinatario.indirizzo],
+    ["edit-customer-postal-code", destinatario.cap],
+    ["edit-customer-city", destinatario.citta],
+    ["edit-customer-province", destinatario.provincia],
+    ["edit-customer-notes", destinatario.note]
+  ].forEach(([id, valore]) => { document.getElementById(id).value = valore || ""; });
+  righeOrdineInModifica = (Array.isArray(ordine.items) ? ordine.items : []).map((articolo) => ({
+    productId: articolo.productId || "",
+    nome: articolo.nome || "Prodotto",
+    codice: articolo.codice || "",
+    confezione: articolo.confezione || "",
+    prezzo: Number(articolo.prezzo),
+    quantita: Number.isInteger(articolo.quantita) && articolo.quantita > 0 ? articolo.quantita : 1
+  }));
+  popolaSelettoreProdottiOrdine();
+  renderRigheEditorOrdine();
+  elementi.orderEditDialog.showModal();
+}
+
+function aggiungiProdottoAllOrdine() {
+  const id = elementi.orderAddProductSelect.value;
+  const prodotto = prodotti.find((voce) => voce.id === id);
+  if (!prodotto) return;
+  const rigaEsistente = righeOrdineInModifica.find((voce) => voce.productId === prodotto.id);
+  if (!rigaEsistente && righeOrdineInModifica.length >= 100) {
+    mostraMessaggio(elementi.orderEditMessage, "Un ordine può contenere al massimo 100 righe.");
+    return;
+  }
+  if (rigaEsistente) {
+    rigaEsistente.quantita += 1;
+  } else {
+    righeOrdineInModifica.push({
+      productId: prodotto.id,
+      nome: prodotto.nome || "Prodotto",
+      codice: prodotto.codice || "",
+      confezione: prodotto.confezione || "",
+      prezzo: prodotto.prezzo,
+      quantita: 1
+    });
+  }
+  elementi.orderAddProductSelect.value = "";
+  mostraMessaggio(elementi.orderEditMessage, "");
+  renderRigheEditorOrdine();
+}
+
+async function salvaModificheOrdine(evento) {
+  evento.preventDefault();
+  if (!utenteAmministratore) return;
+  if (!navigator.onLine) {
+    mostraMessaggio(elementi.orderEditMessage, "Connettiti a internet per modificare gli ordini.");
+    return;
+  }
+  const ordine = ordini.find((voce) => voce.id === elementi.orderEditId.value);
+  if (!ordine || statoOrdine(ordine) === "annullato") {
+    mostraMessaggio(elementi.orderEditMessage, "Questo ordine non è più modificabile.");
+    return;
+  }
+  aggiornaTotaleEditorOrdine();
+  if (elementi.saveOrderButton.disabled) {
+    mostraMessaggio(elementi.orderEditMessage, "Inserisci almeno un prodotto e quantità valide.");
+    return;
+  }
+  if (!window.confirm(`Salvare le modifiche all'ordine ${ordine.numero || ""}?`)) return;
+
+  const datiModulo = new FormData(elementi.orderEditForm);
+  const destinatario = {
+    nome: String(datiModulo.get("nome") || "").trim(),
+    telefono: String(datiModulo.get("telefono") || "").trim(),
+    email: String(datiModulo.get("email") || "").trim(),
+    indirizzo: String(datiModulo.get("indirizzo") || "").trim(),
+    cap: String(datiModulo.get("cap") || "").trim(),
+    citta: String(datiModulo.get("citta") || "").trim(),
+    provincia: String(datiModulo.get("provincia") || "").trim(),
+    note: String(datiModulo.get("note") || "").trim()
+  };
+  const items = righeOrdineInModifica.map((articolo) => ({
+    productId: articolo.productId,
+    nome: articolo.nome,
+    codice: articolo.codice,
+    confezione: articolo.confezione,
+    prezzo: articolo.prezzo,
+    quantita: articolo.quantita,
+    subtotale: Math.round(articolo.prezzo * articolo.quantita * 100) / 100
+  }));
+  const totale = Math.round(items.reduce((somma, articolo) => somma + articolo.subtotale, 0) * 100) / 100;
+  elementi.saveOrderButton.disabled = true;
+  mostraMessaggio(elementi.orderEditMessage, "Salvataggio modifiche...", "avviso");
+  try {
+    await updateDoc(doc(db, "ordini", ordine.id), {
+      destinatario,
+      items,
+      totale,
+      stato: statoOrdine(ordine),
+      aggiornatoIl: serverTimestamp()
+    });
+    elementi.orderEditDialog.close();
+    mostraMessaggio(elementi.ordersMessage, `Ordine ${ordine.numero || ""} aggiornato.`, "successo");
+  } catch (errore) {
+    console.error("Errore durante la modifica dell'ordine:", errore);
+    mostraMessaggio(elementi.orderEditMessage, erroreOperazioneOrdine(errore));
+  } finally {
+    aggiornaTotaleEditorOrdine();
+  }
 }
 
 function messaggioErroreCarrello(errore) {
@@ -477,7 +893,7 @@ function messaggioErroreCarrello(errore) {
 }
 
 function persistiCarrello() {
-  if (!utenteCorrente || !carrelloCaricato) {
+  if (!utenteAmministratore || !utenteCorrente || !carrelloCaricato) {
     return Promise.reject(new Error("Il carrello dell'account non è ancora disponibile."));
   }
   const uid = utenteCorrente.uid;
@@ -635,7 +1051,8 @@ async function inviaOrdine(evento) {
       destinatario: cliente,
       items: righe,
       totale,
-      creatoIl: serverTimestamp()
+      creatoIl: serverTimestamp(),
+      stato: "ricevuto"
     });
     batch.set(doc(db, "carrelli", utenteCorrente.uid), {
       items: [],
@@ -661,8 +1078,10 @@ async function inviaOrdine(evento) {
 function mostraRiepilogoOrdine(ordine) {
   elementi.catalogPage.hidden = true;
   elementi.cartPage.hidden = true;
+  elementi.ordersPage.hidden = true;
   elementi.orderSummaryPage.hidden = false;
   elementi.searchArea.hidden = true;
+  elementi.topbarInner.classList.remove("orders-open");
   elementi.topbarInner.classList.add("cart-open");
   elementi.cartButton.setAttribute("aria-label", "Apri il carrello");
   chiudiSuggerimenti();
@@ -977,19 +1396,21 @@ function apriDettaglio(prodotto) {
     caratteristiche.textContent = prodotto.caratteristiche;
     elementi.detailContent.append(caratteristiche);
   }
-  const azioni = document.createElement("div");
-  azioni.className = "detail-actions";
-  const aggiungiAlCarrelloButton = document.createElement("button");
-  aggiungiAlCarrelloButton.className = "button button-primary";
-  aggiungiAlCarrelloButton.type = "button";
-  aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
-  const messaggio = document.createElement("p");
-  messaggio.className = "message";
-  messaggio.setAttribute("role", "status");
-  messaggio.setAttribute("aria-live", "polite");
-  aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto, messaggio));
-  azioni.append(aggiungiAlCarrelloButton, messaggio);
-  elementi.detailContent.append(azioni);
+  if (utenteAmministratore) {
+    const azioni = document.createElement("div");
+    azioni.className = "detail-actions";
+    const aggiungiAlCarrelloButton = document.createElement("button");
+    aggiungiAlCarrelloButton.className = "button button-primary";
+    aggiungiAlCarrelloButton.type = "button";
+    aggiungiAlCarrelloButton.textContent = "Aggiungi al carrello";
+    const messaggio = document.createElement("p");
+    messaggio.className = "message";
+    messaggio.setAttribute("role", "status");
+    messaggio.setAttribute("aria-live", "polite");
+    aggiungiAlCarrelloButton.addEventListener("click", () => aggiungiAlCarrello(prodotto, messaggio));
+    azioni.append(aggiungiAlCarrelloButton, messaggio);
+    elementi.detailContent.append(azioni);
+  }
   elementi.detailDialog.showModal();
 }
 
@@ -1581,9 +2002,9 @@ onAuthStateChanged(auth, (utente) => {
   elementi.appView.hidden = !utente;
   if (utente) {
     utenteCorrente = utente;
+    mostraMessaggio(elementi.appMessage, "");
     mostraCarrello(false);
     iniziaAscolto();
-    iniziaAscoltoCarrello(utente.uid);
     caricaPermessiCatalogo(utente.uid);
   }
   else {
@@ -1591,24 +2012,57 @@ onAuthStateChanged(auth, (utente) => {
     interrompiAscolto = null;
     if (interrompiCarrelloAscolto) interrompiCarrelloAscolto();
     interrompiCarrelloAscolto = null;
+    if (interrompiOrdiniAscolto) interrompiOrdiniAscolto();
+    interrompiOrdiniAscolto = null;
     utenteCorrente = null;
     carrelloCaricato = false;
     catalogoCaricato = false;
     scritturaCarrello = Promise.resolve();
     ordineCorrente = null;
+    ordini = [];
+    righeOrdineInModifica = [];
     prodotti = [];
     carrello.clear();
     impostaPermessiCatalogo(false);
     elementi.productList.replaceChildren();
     elementi.productCount.textContent = "Accedi per vedere il catalogo";
     mostraCarrello(false);
+    mostraDashboardOrdini(false);
     aggiornaCarrello();
     chiudiSuggerimenti();
   }
 });
 
 elementi.cartButton.addEventListener("click", () => mostraCarrello(elementi.cartPage.hidden));
+elementi.orderDashboardButton.addEventListener("click", () => mostraDashboardOrdini(true));
 elementi.backToCatalogButton.addEventListener("click", () => mostraCarrello(false));
+elementi.ordersBackToCatalogButton.addEventListener("click", () => mostraDashboardOrdini(false));
+elementi.ordersList.addEventListener("click", (evento) => {
+  const pulsante = evento.target.closest("button[data-order-action]");
+  if (!pulsante || !utenteAmministratore) return;
+  const ordine = ordini.find((voce) => voce.id === pulsante.dataset.orderId);
+  if (!ordine) return;
+  if (pulsante.dataset.orderAction === "modifica") apriModificaOrdine(ordine);
+  if (pulsante.dataset.orderAction === "annulla") annullaOrdine(ordine, pulsante);
+});
+elementi.orderStatusFilter.addEventListener("change", mostraOrdini);
+elementi.orderEditItems.addEventListener("input", (evento) => {
+  if (evento.target.matches("[data-order-item-quantity]")) aggiornaTotaleEditorOrdine();
+});
+elementi.orderEditItems.addEventListener("click", (evento) => {
+  const pulsante = evento.target.closest("button[data-remove-order-item]");
+  if (!pulsante) return;
+  righeOrdineInModifica.splice(Number(pulsante.dataset.removeOrderItem), 1);
+  renderRigheEditorOrdine();
+});
+elementi.orderAddProductButton.addEventListener("click", aggiungiProdottoAllOrdine);
+elementi.orderEditForm.addEventListener("submit", salvaModificheOrdine);
+elementi.orderEditDialog.querySelectorAll("[data-close-order-edit]").forEach((pulsante) => {
+  pulsante.addEventListener("click", () => elementi.orderEditDialog.close());
+});
+elementi.orderEditDialog.addEventListener("click", (evento) => {
+  if (evento.target === elementi.orderEditDialog) elementi.orderEditDialog.close();
+});
 elementi.cartItems.addEventListener("click", gestisciAzioneCarrello);
 elementi.clearCartButton.addEventListener("click", svuotaCarrello);
 elementi.placeOrderButton.addEventListener("click", apriConfermaOrdine);

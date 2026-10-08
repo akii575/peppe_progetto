@@ -35,7 +35,8 @@
             <input id="search-input" type="search" placeholder="Cerca nome o codice..." autocomplete="off" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false">
             <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
           </div>
-          <button id="cart-button" class="button button-quiet cart-button" type="button" aria-label="Apri carrello">
+          <button id="order-dashboard-button" class="button button-quiet" type="button" hidden>Ordini</button>
+          <button id="cart-button" class="button button-quiet cart-button" type="button" aria-label="Apri carrello" hidden>
             <span aria-hidden="true">🛒</span>
             <span id="cart-count" class="cart-count">0</span>
           </button>
@@ -111,6 +112,27 @@
           <p class="muted">L'ordine è stato salvato nel tuo account. Il pagamento e la spedizione non vengono gestiti automaticamente.</p>
           <button id="download-shipping-note" class="button button-primary" type="button">Scarica bolla di spedizione</button>
         </section>
+      </main>
+
+      <main id="orders-page" class="page-content orders-page" hidden>
+        <div class="cart-page-heading">
+          <div>
+            <p class="eyebrow">GESTIONE AMMINISTRATIVA</p>
+            <h1>Storico ordini</h1>
+          </div>
+          <button id="orders-back-to-catalog" class="button button-secondary" type="button">Torna al catalogo</button>
+        </div>
+        <div class="orders-toolbar">
+          <label for="order-status-filter">Mostra</label>
+          <select id="order-status-filter">
+            <option value="">Tutti gli ordini</option>
+            <option value="ricevuto">Ricevuti</option>
+            <option value="annullato">Annullati</option>
+          </select>
+          <span id="orders-count" class="muted" role="status" aria-live="polite">Caricamento ordini...</span>
+        </div>
+        <p id="orders-message" class="message" role="status" aria-live="polite"></p>
+        <section id="orders-list" class="orders-list" aria-label="Storico ordini"></section>
       </main>
     </div>
 
@@ -206,6 +228,57 @@
         <div class="dialog-actions">
           <button class="button button-secondary" type="button" data-close-checkout>Annulla</button>
           <button id="confirm-order-button" class="button button-primary" type="submit">Conferma e invia ordine</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="order-edit-dialog" class="dialog order-edit-dialog">
+      <form id="order-edit-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">GESTIONE ORDINE</p>
+            <h2 id="order-edit-title">Modifica ordine</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-order-edit aria-label="Chiudi">×</button>
+        </div>
+        <p id="order-edit-message" class="message" role="alert" aria-live="assertive"></p>
+        <input id="order-edit-id" name="id" type="hidden">
+        <h3>Dati del destinatario</h3>
+        <label for="edit-customer-name">Nome o ragione sociale *</label>
+        <input id="edit-customer-name" name="nome" type="text" maxlength="140" required>
+        <label for="edit-customer-phone">Telefono *</label>
+        <input id="edit-customer-phone" name="telefono" type="tel" maxlength="40" required>
+        <label for="edit-customer-email">Email</label>
+        <input id="edit-customer-email" name="email" type="email" maxlength="180">
+        <label for="edit-customer-address">Indirizzo e numero civico *</label>
+        <input id="edit-customer-address" name="indirizzo" type="text" maxlength="180" required>
+        <div class="form-row">
+          <div>
+            <label for="edit-customer-postal-code">CAP *</label>
+            <input id="edit-customer-postal-code" name="cap" type="text" maxlength="20" required>
+          </div>
+          <div>
+            <label for="edit-customer-city">Città *</label>
+            <input id="edit-customer-city" name="citta" type="text" maxlength="100" required>
+          </div>
+        </div>
+        <label for="edit-customer-province">Provincia</label>
+        <input id="edit-customer-province" name="provincia" type="text" maxlength="80">
+        <label for="edit-customer-notes">Note per la consegna</label>
+        <textarea id="edit-customer-notes" name="note" rows="3" maxlength="1000"></textarea>
+        <h3>Prodotti dell'ordine</h3>
+        <section id="order-edit-items" class="order-edit-items" aria-label="Prodotti da modificare"></section>
+        <div class="order-add-product">
+          <label for="order-add-product-select">Aggiungi un prodotto</label>
+          <select id="order-add-product-select">
+            <option value="">Seleziona dal catalogo</option>
+          </select>
+          <button id="order-add-product-button" class="button button-secondary" type="button">Aggiungi prodotto</button>
+        </div>
+        <p id="order-edit-total" class="order-edit-total"></p>
+        <div class="dialog-actions">
+          <button class="button button-secondary" type="button" data-close-order-edit>Chiudi</button>
+          <button id="save-order-button" class="button button-primary" type="submit">Salva modifiche</button>
         </div>
       </form>
     </dialog>
