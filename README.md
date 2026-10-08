@@ -1,6 +1,6 @@
 # Catalogo prodotti Dolcevolta
 
-Applicazione statica mobile-first per consultare e gestire il catalogo. Usa HTML, CSS e JavaScript standard: non richiede npm, framework o compilazione.
+Applicazione statica mobile-first per consultare e gestire il catalogo. Usa HTML, CSS e JavaScript standard: non richiede npm, framework o compilazione. Firestore conserva prodotti e account; Cloudinary ospita le foto.
 
 ## 1. Creare il progetto Firebase gratuito
 
@@ -14,7 +14,9 @@ Le chiavi di configurazione Firebase presenti nel frontend non sono segrete: son
 
 1. In **Authentication > Metodo di accesso**, abilita **Email/Password**. Poi apri **Utenti > Aggiungi utente** e crea l’utente con la tua email e password. L’app non permette la registrazione pubblica.
 2. Apri **Firestore Database > Crea database**, scegli la modalità **produzione** e una regione europea (per esempio `eur3`). Dalla scheda **Regole**, incolla il contenuto di `firestore.rules` e fai clic su **Pubblica**.
-3. Per usare Firebase Storage, collega un account di fatturazione e passa al piano **Blaze**. Crea il bucket da **Storage > Inizia**, poi nella scheda **Regole** incolla il contenuto di `storage.rules` e fai clic su **Pubblica**. Su Blaze può essere disponibile una quota senza costo; l’uso oltre le quote previste può essere addebitato. Consulta la [FAQ ufficiale di Firebase Storage](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024) e i prezzi correnti prima di abilitare la fatturazione.
+3. Per caricare le foto, crea un account Cloudinary e un preset unsigned in **Settings > Upload > Upload presets**. Il Cloud name `lgpus1ka` e il preset `peppe_progetto` sono già impostati all’inizio di `app.js`. Nel preset consenti solo JPEG, limita la dimensione a 2 MB e imposta la cartella `prodotti`, se queste opzioni sono disponibili. Non serve attivare Firebase Storage né pubblicare `storage.rules`.
+
+Gli upload unsigned non richiedono un segreto API nel browser, ma il preset è pubblico: chiunque lo conosca può tentare di caricare immagini. Limita formati e dimensioni nel preset e controlla periodicamente gli utilizzi. Il prodotto viene salvato su Firestore prima del caricamento della foto; se l’upload fallisce, i dati restano salvati e puoi riprovare la foto modificando il prodotto. Per mantenere il sito solo frontend, l’app non elimina le immagini da Cloudinary: quando elimini un prodotto o sostituisci la foto, il file remoto può restare nella libreria Cloudinary e va rimosso da lì manualmente.
 
 ## 3. Pubblicare e usare
 
@@ -26,7 +28,7 @@ Per provare il sito localmente, avvialo da un server statico (non aprire `index.
 
 ### Problemi comuni
 
-- **`permission-denied`**: verifica di aver effettuato l’accesso e di aver pubblicato le regole di `firestore.rules` e `storage.rules` nel progetto corretto.
+- **`permission-denied`**: verifica di aver effettuato l’accesso e di aver pubblicato le regole di `firestore.rules` nel progetto corretto.
 - **Dominio non autorizzato**: aggiungi il dominio effettivo del sito in **Authentication > Impostazioni > Domini autorizzati**.
-- **Foto che non si carica**: controlla che il bucket Storage sia stato creato, che il progetto sia sul piano Blaze e che le regole siano pubblicate. Le foto vengono ridimensionate in JPEG e devono restare sotto 2 MB.
+- **Foto che non si carica**: verifica Cloud name e preset unsigned in `app.js`, le impostazioni del preset Cloudinary e la connessione. Le foto vengono ridimensionate in JPEG e devono restare sotto 2 MB.
 - **Cache offline**: Firestore mantiene una cache locale consultabile con connessione assente o debole. La sincronizzazione delle modifiche richiede comunque una connessione; non cancellare i dati del browser se vuoi mantenere la cache.

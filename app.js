@@ -9,6 +9,11 @@ const firebaseConfig = {
   measurementId: "G-51VHZNE4B0"
 };
 
+// Questi due valori identificano l'account Cloudinary e il preset unsigned.
+const CLOUDINARY_CLOUD_NAME = "lgpus1ka";
+const CLOUDINARY_UPLOAD_PRESET = "peppe_progetto";
+const CLOUDINARY_UPLOAD_TIMEOUT_MS = 45_000;
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth,
@@ -23,22 +28,17 @@ import {
   initializeFirestore,
   onSnapshot,
   persistentLocalCache,
+  persistentMultipleTabManager,
   serverTimestamp,
   setDoc,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-  deleteObject,
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytes
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 const appFirebase = initializeApp(firebaseConfig);
 const auth = getAuth(appFirebase);
-const db = initializeFirestore(appFirebase, { localCache: persistentLocalCache() });
-const storage = getStorage(appFirebase);
+const db = initializeFirestore(appFirebase, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 
 const elementi = {
   loginView: document.getElementById("login-view"),
@@ -492,14 +492,44 @@ async function ridimensionaFoto(file) {
 }
 
 async function caricaFoto(file, idProdotto) {
-  elementi.photoStatus.textContent = "Caricamento...";
+  elementi.photoStatus.textContent = "Preparazione foto...";
   const fotoRidimensionata = await ridimensionaFoto(file);
-  const percorso = `prodotti/${idProdotto}.jpg`;
-  const riferimento = ref(storage, percorso);
-  await uploadBytes(riferimento, fotoRidimensionata, { contentType: "image/jpeg" });
-  const fotoUrl = await getDownloadURL(riferimento);
-  elementi.photoStatus.textContent = "Foto caricata.";
-  return { fotoUrl, fotoPath: percorso };
+  const dati = new FormData();
+  dati.append("file", fotoRidimensionata, `${idProdotto}.jpg`);
+  dati.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+  elementi.photoStatus.textContent = "Caricamento su Cloudinary...";
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), CLOUDINARY_UPLOAD_TIMEOUT_MS);
+  let risposta;
+  try {
+    risposta = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      { method: "POST", body: dati, signal: controller.signal }
+    );
+  } catch (errore) {
+    if (errore.name === "AbortError") {
+      throw new Error("Caricamento foto scaduto dopo 45 secondi. Verifica connessione e preset Cloudinary.");
+    }
+    throw new Error("Connessione a Cloudinary non riuscita. Verifica la rete e il preset unsigned.");
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  let risultato;
+  try {
+    risultato = await risposta.json();
+  } catch {
+    throw new Error("Cloudinary ha restituito una risposta non valida.");
+  }
+  if (!risposta.ok) {
+    throw new Error(risultato.error?.message || "Cloudinary non ha accettato la foto.");
+  }
+  if (!risultato.secure_url) {
+    throw new Error("Cloudinary ha risposto senza un URL sicuro per la foto.");
+  }
+  elementi.photoStatus.textContent = "Foto caricata su Cloudinary.";
+  return { fotoUrl: risultato.secure_url, fotoPath: "" };
 }
 
 function valoreNumerico(input, etichetta) {
@@ -517,12 +547,12 @@ async function salvaProdotto(evento) {
   elementi.saveProductButton.disabled = true;
   let fotoCaricata = null;
   let caricamentoFotoAvviato = false;
+  let prodottoSalvato = false;
   let idProdotto = elementi.productId.value;
   try {
     const nuovo = !idProdotto;
     const riferimento = nuovo ? doc(prodottiRef) : doc(db, "prodotti", idProdotto);
     idProdotto = riferimento.id;
-    const prodottoPrecedente = prodotti.find((prodotto) => prodotto.id === idProdotto);
     const dati = {
       nome: elementi.productName.value.trim(),
       codice: elementi.productCode.value.trim(),
@@ -535,39 +565,38 @@ async function salvaProdotto(evento) {
     };
     if (nuovo) dati.creatoIl = serverTimestamp();
 
+    await setDoc(riferimento, dati, { merge: true });
+    prodottoSalvato = true;
+
     const file = elementi.productPhoto.files?.[0];
     if (file) {
       caricamentoFotoAvviato = true;
       fotoCaricata = await caricaFoto(file, idProdotto);
-      dati.fotoUrl = fotoCaricata.fotoUrl;
-      dati.fotoPath = fotoCaricata.fotoPath;
+      await setDoc(riferimento, {
+        fotoUrl: fotoCaricata.fotoUrl,
+        fotoPath: fotoCaricata.fotoPath,
+        aggiornatoIl: serverTimestamp()
+      }, { merge: true });
     }
 
-    await setDoc(riferimento, dati, { merge: true });
-    if (fotoCaricata && prodottoPrecedente?.fotoPath && prodottoPrecedente.fotoPath !== fotoCaricata.fotoPath) {
-      try {
-        await deleteObject(ref(storage, prodottoPrecedente.fotoPath));
-      } catch (errore) {
-        elementi.photoStatus.textContent = "Prodotto salvato; non è stato possibile rimuovere la vecchia foto.";
-        console.error("Errore durante la rimozione della vecchia foto:", errore);
-      }
-    }
     elementi.productDialog.close();
     elementi.productForm.reset();
     mostraMessaggio(elementi.appMessage, "Prodotto salvato correttamente.", "successo");
   } catch (errore) {
     console.error("Errore durante il salvataggio del prodotto:", errore);
     if (caricamentoFotoAvviato) {
-      elementi.photoStatus.textContent = "Caricamento o salvataggio della foto non riuscito.";
+      elementi.photoStatus.textContent = prodottoSalvato
+        ? "Il prodotto è salvato; il caricamento della foto non è riuscito."
+        : "Caricamento o salvataggio della foto non riuscito.";
     }
-    const dettaglio = errore?.code === "storage/unauthorized"
-      ? "Controlla le regole di Firebase Storage e il tuo accesso."
-      : errore?.code === "permission-denied"
-        ? "Permesso negato: verifica l’accesso e le regole Firestore."
+    const dettaglio = errore?.code === "permission-denied"
+      ? "Permesso negato: verifica l’accesso e le regole Firestore."
         : errore?.code === "unavailable" || !navigator.onLine
           ? "Connessione assente o instabile. Riprova quando sei online."
           : errore.message || "Non è stato possibile salvare il prodotto.";
-    mostraMessaggio(elementi.productFormMessage, dettaglio);
+    mostraMessaggio(elementi.productFormMessage, prodottoSalvato
+      ? `Prodotto salvato, ma non è stato possibile completare la foto: ${dettaglio}`
+      : dettaglio);
   } finally {
     elementi.saveProductButton.disabled = false;
   }
@@ -585,17 +614,10 @@ async function eliminaProdotto(prodotto) {
       : "Non è stato possibile eliminare il prodotto. Controlla la connessione e i permessi.");
     return;
   }
-  if (prodotto.fotoPath) {
-    try {
-      await deleteObject(ref(storage, prodotto.fotoPath));
-      mostraMessaggio(elementi.appMessage, "Prodotto e foto eliminati.", "successo");
-    } catch (errore) {
-      console.error("Prodotto eliminato, ma la foto non è stata rimossa:", errore);
-      mostraMessaggio(elementi.appMessage, "Prodotto eliminato, ma non è stato possibile cancellare la foto dallo Storage.");
-    }
-  } else {
-    mostraMessaggio(elementi.appMessage, "Prodotto eliminato.", "successo");
-  }
+  const messaggio = prodotto.fotoUrl
+    ? "Prodotto eliminato. La foto resta su Cloudinary: cancellala dalla libreria Cloudinary se non ti serve più."
+    : "Prodotto eliminato.";
+  mostraMessaggio(elementi.appMessage, messaggio, "successo");
 }
 
 function mappaProdottoJson(voce, indice) {
