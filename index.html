@@ -78,7 +78,7 @@
           </div>
           <button id="back-to-catalog" class="button button-secondary" type="button">Torna ai prodotti</button>
         </div>
-        <p class="muted cart-note">Il carrello è temporaneo e si svuota quando ricarichi la pagina. Il totale usa il prezzo standard (IVA inclusa), non il prezzo alternativo.</p>
+        <p class="muted cart-note">Il carrello si salva automaticamente per il tuo account. Il totale usa il prezzo standard (IVA inclusa), non il prezzo alternativo.</p>
         <p id="cart-message" class="message" role="status" aria-live="polite"></p>
         <p id="cart-empty" class="empty-state">Il carrello è vuoto. Aggiungi prodotti dal catalogo.</p>
         <section id="cart-items" class="cart-items" aria-label="Prodotti nel carrello"></section>
@@ -87,6 +87,29 @@
           <div><span id="cart-total-label">Totale</span><strong id="cart-total-price">0,00 €</strong></div>
           <p id="cart-unknown-prices" class="muted" hidden></p>
           <button id="clear-cart-button" class="button button-danger" type="button">Svuota carrello</button>
+          <button id="place-order-button" class="button button-primary" type="button">Invia ordine</button>
+        </section>
+      </main>
+
+      <main id="order-summary-page" class="page-content order-summary-page" hidden>
+        <div class="cart-page-heading">
+          <div>
+            <p class="eyebrow">ORDINE INVIATO</p>
+            <h1>Riepilogo ordine</h1>
+          </div>
+          <button id="order-back-to-catalog" class="button button-secondary" type="button">Torna al catalogo</button>
+        </div>
+        <p id="order-summary-message" class="message message-success" role="status" aria-live="polite">Ordine registrato correttamente.</p>
+        <section class="order-summary-card" aria-label="Dettagli ordine">
+          <p>Numero ordine: <strong id="order-number"></strong></p>
+          <p>Data: <strong id="order-date"></strong></p>
+          <h2>Destinatario</h2>
+          <dl id="order-customer" class="detail-facts"></dl>
+          <h2>Prodotti ordinati</h2>
+          <div id="order-items" class="order-items"></div>
+          <div class="order-total-row"><span>Totale</span><strong id="order-total"></strong></div>
+          <p class="muted">L'ordine è stato salvato nel tuo account. Il pagamento e la spedizione non vengono gestiti automaticamente.</p>
+          <button id="download-shipping-note" class="button button-primary" type="button">Scarica bolla di spedizione</button>
         </section>
       </main>
     </div>
@@ -146,6 +169,45 @@
         </div>
         <div id="detail-content"></div>
       </section>
+    </dialog>
+
+    <dialog id="checkout-dialog" class="dialog">
+      <form id="checkout-form" class="dialog-card">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">DATI DI SPEDIZIONE</p>
+            <h2>Completa l'ordine</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-checkout aria-label="Chiudi">×</button>
+        </div>
+        <p id="checkout-message" class="message" role="alert" aria-live="assertive"></p>
+        <label for="customer-name">Nome o ragione sociale <span class="required">*</span></label>
+        <input id="customer-name" name="nome" type="text" maxlength="140" autocomplete="name" required>
+        <label for="customer-phone">Telefono <span class="required">*</span></label>
+        <input id="customer-phone" name="telefono" type="tel" maxlength="40" autocomplete="tel" required>
+        <label for="customer-email">Email</label>
+        <input id="customer-email" name="email" type="email" maxlength="180" autocomplete="email">
+        <label for="customer-address">Indirizzo e numero civico <span class="required">*</span></label>
+        <input id="customer-address" name="indirizzo" type="text" maxlength="180" autocomplete="street-address" required>
+        <div class="form-row">
+          <div>
+            <label for="customer-postal-code">CAP <span class="required">*</span></label>
+            <input id="customer-postal-code" name="cap" type="text" maxlength="20" autocomplete="postal-code" required>
+          </div>
+          <div>
+            <label for="customer-city">Città <span class="required">*</span></label>
+            <input id="customer-city" name="citta" type="text" maxlength="100" autocomplete="address-level2" required>
+          </div>
+        </div>
+        <label for="customer-province">Provincia</label>
+        <input id="customer-province" name="provincia" type="text" maxlength="80" autocomplete="address-level1">
+        <label for="customer-notes">Note per la consegna</label>
+        <textarea id="customer-notes" name="note" rows="3" maxlength="1000"></textarea>
+        <div class="dialog-actions">
+          <button class="button button-secondary" type="button" data-close-checkout>Annulla</button>
+          <button id="confirm-order-button" class="button button-primary" type="submit">Conferma e invia ordine</button>
+        </div>
+      </form>
     </dialog>
   </body>
 </html>

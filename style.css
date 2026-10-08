@@ -87,6 +87,17 @@ textarea { min-height: 88px; resize: vertical; }
 .cart-summary > div:last-of-type strong { color: var(--green); font-size: 1.35rem; }
 .cart-summary .button { justify-self: end; }
 .cart-summary .muted { margin: 0; font-size: .88rem; }
+.order-summary-card { max-width: 920px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.order-summary-card h2 { margin: 22px 0 10px; color: var(--green); font-size: 1.08rem; }
+.order-summary-card > p { margin: 7px 0; }
+.order-summary-card .detail-facts { grid-template-columns: minmax(130px, auto) minmax(0, 1fr); }
+.order-items { overflow-x: auto; }
+.order-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: .88rem; }
+.order-table th, .order-table td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.order-table th { color: var(--muted); font-size: .78rem; }
+.order-total-row { display: flex; justify-content: flex-end; gap: 20px; margin: 18px 0; font-size: 1.2rem; }
+.order-total-row strong { color: var(--green); }
+.order-summary-card > .button { width: 100%; margin-top: 12px; }
 .catalog-title { margin: 8px 0 16px; color: #26352f; font-size: clamp(1.5rem, 4vw, 2rem); }
 .toolbar { display: grid; grid-template-columns: minmax(220px, 1.2fr) auto auto auto; align-items: center; gap: 10px; margin: 0 0 14px; }
 .toolbar-category { display: flex; align-items: center; gap: 10px; }
@@ -185,6 +196,9 @@ textarea { min-height: 88px; resize: vertical; }
   .cart-item-subtotal { min-width: 65px; font-size: .86rem; }
   .cart-remove-button { font-size: .82rem; }
   .cart-summary { padding: 14px; }
+  .order-summary-card { padding: 14px; }
+  .order-summary-card .detail-facts { grid-template-columns: minmax(100px, auto) minmax(0, 1fr); gap: 8px; font-size: .84rem; }
+  .order-table { min-width: 580px; font-size: .82rem; }
 }
 
 @media (max-width: 380px) {

@@ -57,7 +57,9 @@ const elementi = {
   cartCount: document.getElementById("cart-count"),
   catalogPage: document.getElementById("catalog-page"),
   cartPage: document.getElementById("cart-page"),
+  orderSummaryPage: document.getElementById("order-summary-page"),
   backToCatalogButton: document.getElementById("back-to-catalog"),
+  orderBackToCatalogButton: document.getElementById("order-back-to-catalog"),
   cartItems: document.getElementById("cart-items"),
   cartEmpty: document.getElementById("cart-empty"),
   cartSummary: document.getElementById("cart-summary"),
@@ -67,6 +69,17 @@ const elementi = {
   cartUnknownPrices: document.getElementById("cart-unknown-prices"),
   cartMessage: document.getElementById("cart-message"),
   clearCartButton: document.getElementById("clear-cart-button"),
+  placeOrderButton: document.getElementById("place-order-button"),
+  checkoutDialog: document.getElementById("checkout-dialog"),
+  checkoutForm: document.getElementById("checkout-form"),
+  checkoutMessage: document.getElementById("checkout-message"),
+  confirmOrderButton: document.getElementById("confirm-order-button"),
+  orderNumber: document.getElementById("order-number"),
+  orderDate: document.getElementById("order-date"),
+  orderCustomer: document.getElementById("order-customer"),
+  orderItems: document.getElementById("order-items"),
+  orderTotal: document.getElementById("order-total"),
+  downloadShippingNoteButton: document.getElementById("download-shipping-note"),
   connectionMessage: document.getElementById("connection-message"),
   toolbar: document.querySelector(".toolbar"),
   categoryFilter: document.getElementById("category-filter"),
@@ -114,6 +127,12 @@ const formatterPrezzo = new Intl.NumberFormat("it-IT", {
 let prodotti = [];
 let carrello = new Map();
 let interrompiAscolto = null;
+let interrompiCarrelloAscolto = null;
+let utenteCorrente = null;
+let carrelloCaricato = false;
+let catalogoCaricato = false;
+let scritturaCarrello = Promise.resolve();
+let ordineCorrente = null;
 let suggerimentiVisibili = [];
 let indiceSuggerimento = -1;
 let timerRicerca = null;
@@ -279,11 +298,20 @@ function filtraProdotti() {
   visibili.forEach((prodotto) => elementi.productList.append(creaSchedaProdotto(prodotto)));
 }
 
-function aggiungiAlCarrello(prodotto, messaggio = elementi.appMessage) {
+async function aggiungiAlCarrello(prodotto, messaggio = elementi.appMessage) {
+  if (!carrelloCaricato) {
+    mostraMessaggio(messaggio, "Il carrello del tuo account è ancora in caricamento. Riprova tra poco.", "avviso");
+    return;
+  }
   const riga = carrello.get(prodotto.id);
   carrello.set(prodotto.id, { quantita: (riga?.quantita || 0) + 1 });
   aggiornaCarrello();
-  mostraMessaggio(messaggio, `${prodotto.nome} aggiunto al carrello.`, "successo");
+  try {
+    await persistiCarrello();
+    mostraMessaggio(messaggio, `${prodotto.nome} aggiunto al carrello.`, "successo");
+  } catch (errore) {
+    mostraMessaggio(messaggio, messaggioErroreCarrello(errore));
+  }
 }
 
 function creaRigaCarrello(prodotto, quantita) {
@@ -356,8 +384,14 @@ function creaRigaCarrello(prodotto, quantita) {
 
 function aggiornaCarrello() {
   const prodottiPerId = new Map(prodotti.map((prodotto) => [prodotto.id, prodotto]));
-  for (const id of carrello.keys()) {
-    if (!prodottiPerId.has(id)) carrello.delete(id);
+  const numeroPrimaDelControllo = carrello.size;
+  if (catalogoCaricato) {
+    for (const id of carrello.keys()) {
+      if (!prodottiPerId.has(id)) carrello.delete(id);
+    }
+  }
+  if (carrello.size !== numeroPrimaDelControllo && carrelloCaricato && utenteCorrente) {
+    persistiCarrello().catch((errore) => mostraMessaggio(elementi.cartMessage, messaggioErroreCarrello(errore)));
   }
   const righe = [...carrello.entries()]
     .map(([id, dati]) => ({ prodotto: prodottiPerId.get(id), quantita: dati.quantita }))
@@ -390,6 +424,7 @@ function aggiornaCarrello() {
 function mostraCarrello(aperto) {
   elementi.catalogPage.hidden = aperto;
   elementi.cartPage.hidden = !aperto;
+  elementi.orderSummaryPage.hidden = true;
   elementi.searchArea.hidden = aperto;
   elementi.topbarInner.classList.toggle("cart-open", aperto);
   elementi.cartButton.setAttribute("aria-label", aperto ? "Torna al catalogo" : `Apri carrello, ${elementi.cartCount.textContent} articoli`);
@@ -397,7 +432,39 @@ function mostraCarrello(aperto) {
   if (aperto) aggiornaCarrello();
 }
 
-function gestisciAzioneCarrello(evento) {
+function messaggioErroreCarrello(errore) {
+  if (!navigator.onLine || errore?.code === "unavailable") {
+    return "Connessione assente: il carrello non è stato sincronizzato. Riprova quando sei online.";
+  }
+  if (errore?.code === "permission-denied") {
+    return "Accesso al carrello negato: verifica le regole Firestore e riprova.";
+  }
+  return "Non è stato possibile salvare il carrello. Riprova.";
+}
+
+function persistiCarrello() {
+  if (!utenteCorrente || !carrelloCaricato) {
+    return Promise.reject(new Error("Il carrello dell'account non è ancora disponibile."));
+  }
+  const uid = utenteCorrente.uid;
+  const items = [...carrello.entries()].map(([productId, dati]) => ({
+    productId,
+    quantita: dati.quantita
+  }));
+  const richiesta = scritturaCarrello.catch(() => {}).then(() =>
+    setDoc(doc(db, "carrelli", uid), {
+      items,
+      aggiornatoIl: serverTimestamp()
+    })
+  );
+  scritturaCarrello = richiesta;
+  return richiesta.catch((errore) => {
+    console.error("Errore durante il salvataggio del carrello:", errore);
+    throw errore;
+  });
+}
+
+async function gestisciAzioneCarrello(evento) {
   const pulsante = evento.target.closest("button[data-cart-action]");
   if (!pulsante) return;
   const id = pulsante.dataset.productId;
@@ -406,22 +473,284 @@ function gestisciAzioneCarrello(evento) {
 
   if (pulsante.dataset.cartAction === "rimuovi") {
     carrello.delete(id);
-    mostraMessaggio(elementi.cartMessage, "Prodotto rimosso dal carrello.", "successo");
   } else {
     const incremento = pulsante.dataset.cartAction === "incrementa" ? 1 : -1;
     riga.quantita = Math.max(1, riga.quantita + incremento);
     carrello.set(id, riga);
-    elementi.cartMessage.textContent = "";
   }
   aggiornaCarrello();
+  try {
+    await persistiCarrello();
+    mostraMessaggio(elementi.cartMessage, pulsante.dataset.cartAction === "rimuovi"
+      ? "Prodotto rimosso dal carrello."
+      : "Carrello aggiornato.", "successo");
+  } catch (errore) {
+    mostraMessaggio(elementi.cartMessage, messaggioErroreCarrello(errore));
+  }
 }
 
-function svuotaCarrello() {
+async function svuotaCarrello() {
   if (!carrello.size) return;
   if (!window.confirm("Vuoi rimuovere tutti i prodotti dal carrello?")) return;
   carrello.clear();
   aggiornaCarrello();
-  mostraMessaggio(elementi.cartMessage, "Carrello svuotato.", "successo");
+  try {
+    await persistiCarrello();
+    mostraMessaggio(elementi.cartMessage, "Carrello svuotato.", "successo");
+  } catch (errore) {
+    mostraMessaggio(elementi.cartMessage, messaggioErroreCarrello(errore));
+  }
+}
+
+function raccogliRigheOrdine() {
+  if (!carrello.size) throw new Error("Il carrello è vuoto.");
+  const prodottiPerId = new Map(prodotti.map((prodotto) => [prodotto.id, prodotto]));
+  return [...carrello.entries()].map(([id, dati]) => {
+    const prodotto = prodottiPerId.get(id);
+    if (!prodotto) throw new Error("Un prodotto del carrello non è più disponibile nel catalogo.");
+    if (typeof prodotto.prezzo !== "number" || !Number.isFinite(prodotto.prezzo)) {
+      throw new Error(`Manca il prezzo per «${prodotto.nome || "un prodotto"}». Aggiorna il catalogo prima di inviare l'ordine.`);
+    }
+    return {
+      productId: id,
+      nome: prodotto.nome || "Prodotto",
+      codice: prodotto.codice || "",
+      confezione: prodotto.confezione || "",
+      prezzo: prodotto.prezzo,
+      quantita: dati.quantita,
+      subtotale: prodotto.prezzo * dati.quantita
+    };
+  });
+}
+
+function apriConfermaOrdine() {
+  if (!navigator.onLine) {
+    mostraMessaggio(elementi.cartMessage, "Connettiti a internet per inviare l'ordine.");
+    return;
+  }
+  if (!carrelloCaricato) {
+    mostraMessaggio(elementi.cartMessage, "Attendi il caricamento del carrello del tuo account.");
+    return;
+  }
+  try {
+    raccogliRigheOrdine();
+    mostraMessaggio(elementi.checkoutMessage, "");
+    elementi.checkoutForm.reset();
+    elementi.checkoutDialog.showModal();
+  } catch (errore) {
+    mostraMessaggio(elementi.cartMessage, errore.message);
+  }
+}
+
+function messaggioErroreOrdine(errore) {
+  if (!navigator.onLine || errore?.code === "unavailable") {
+    return "Connessione assente: l'ordine non è stato inviato. Riprova quando sei online.";
+  }
+  if (errore?.code === "permission-denied") {
+    return "Permesso negato: pubblica le nuove regole Firestore e verifica il tuo accesso.";
+  }
+  return errore.message || "Non è stato possibile inviare l'ordine. Il carrello è rimasto salvato.";
+}
+
+async function inviaOrdine(evento) {
+  evento.preventDefault();
+  mostraMessaggio(elementi.checkoutMessage, "");
+  if (!utenteCorrente || !navigator.onLine) {
+    mostraMessaggio(elementi.checkoutMessage, "Connettiti a internet e accedi per inviare l'ordine.");
+    return;
+  }
+
+  let righe;
+  try {
+    righe = raccogliRigheOrdine();
+  } catch (errore) {
+    mostraMessaggio(elementi.checkoutMessage, errore.message);
+    return;
+  }
+
+  const modulo = new FormData(elementi.checkoutForm);
+  const cliente = {
+    nome: String(modulo.get("nome") || "").trim(),
+    telefono: String(modulo.get("telefono") || "").trim(),
+    email: String(modulo.get("email") || "").trim(),
+    indirizzo: String(modulo.get("indirizzo") || "").trim(),
+    cap: String(modulo.get("cap") || "").trim(),
+    citta: String(modulo.get("citta") || "").trim(),
+    provincia: String(modulo.get("provincia") || "").trim(),
+    note: String(modulo.get("note") || "").trim()
+  };
+  const totale = righe.reduce((somma, riga) => somma + riga.subtotale, 0);
+  if (!window.confirm(`Confermi l'invio dell'ordine per ${cliente.nome}? Totale: ${formattaPrezzo(totale)}. L'operazione non si può annullare.`)) {
+    mostraMessaggio(elementi.checkoutMessage, "Ordine non inviato.", "avviso");
+    return;
+  }
+
+  elementi.confirmOrderButton.disabled = true;
+  mostraMessaggio(elementi.checkoutMessage, "Invio dell'ordine in corso...", "avviso");
+  try {
+    await persistiCarrello();
+    if (!navigator.onLine) throw new Error("Connessione assente: l'ordine non è stato inviato.");
+
+    const riferimentoOrdine = doc(collection(db, "ordini"));
+    const creatoIl = new Date();
+    const numero = `ORD-${creatoIl.toISOString().slice(0, 10).replace(/-/g, "")}-${riferimentoOrdine.id.slice(-6).toUpperCase()}`;
+    const batch = writeBatch(db);
+    batch.set(riferimentoOrdine, {
+      uid: utenteCorrente.uid,
+      numero,
+      destinatario: cliente,
+      items: righe,
+      totale,
+      creatoIl: serverTimestamp()
+    });
+    batch.set(doc(db, "carrelli", utenteCorrente.uid), {
+      items: [],
+      aggiornatoIl: serverTimestamp()
+    }, { merge: true });
+    await batch.commit();
+
+    carrello.clear();
+    scritturaCarrello = Promise.resolve();
+    aggiornaCarrello();
+    ordineCorrente = { numero, creatoIl, destinatario: cliente, items: righe, totale };
+    elementi.checkoutDialog.close();
+    elementi.checkoutForm.reset();
+    mostraRiepilogoOrdine(ordineCorrente);
+  } catch (errore) {
+    console.error("Errore durante l'invio dell'ordine:", errore);
+    mostraMessaggio(elementi.checkoutMessage, messaggioErroreOrdine(errore));
+  } finally {
+    elementi.confirmOrderButton.disabled = false;
+  }
+}
+
+function mostraRiepilogoOrdine(ordine) {
+  elementi.catalogPage.hidden = true;
+  elementi.cartPage.hidden = true;
+  elementi.orderSummaryPage.hidden = false;
+  elementi.searchArea.hidden = true;
+  elementi.topbarInner.classList.add("cart-open");
+  elementi.cartButton.setAttribute("aria-label", "Apri il carrello");
+  chiudiSuggerimenti();
+
+  elementi.orderNumber.textContent = ordine.numero;
+  elementi.orderDate.textContent = new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "long",
+    timeStyle: "short"
+  }).format(ordine.creatoIl);
+  elementi.orderCustomer.replaceChildren();
+  [
+    ["Nome o ragione sociale", ordine.destinatario.nome],
+    ["Telefono", ordine.destinatario.telefono],
+    ["Email", ordine.destinatario.email],
+    ["Indirizzo", ordine.destinatario.indirizzo],
+    ["CAP", ordine.destinatario.cap],
+    ["Città", ordine.destinatario.citta],
+    ["Provincia", ordine.destinatario.provincia],
+    ["Note per la consegna", ordine.destinatario.note]
+  ].filter(([, valore]) => valore)
+    .forEach(([etichetta, valore]) => elementi.orderCustomer.append(...creaRigaDettaglio(etichetta, valore)));
+
+  const tabella = document.createElement("table");
+  tabella.className = "order-table";
+  const intestazione = document.createElement("thead");
+  const rigaIntestazione = document.createElement("tr");
+  ["Prodotto", "Codice", "Quantità", "Prezzo unitario", "Subtotale"].forEach((testo) => {
+    const cella = document.createElement("th");
+    cella.scope = "col";
+    cella.textContent = testo;
+    rigaIntestazione.append(cella);
+  });
+  intestazione.append(rigaIntestazione);
+  const corpo = document.createElement("tbody");
+  ordine.items.forEach((articolo) => {
+    const riga = document.createElement("tr");
+    [
+      articolo.nome + (articolo.confezione ? ` (${articolo.confezione})` : ""),
+      articolo.codice || "—",
+      String(articolo.quantita),
+      formattaPrezzo(articolo.prezzo),
+      formattaPrezzo(articolo.subtotale)
+    ].forEach((testo) => {
+      const cella = document.createElement("td");
+      cella.textContent = testo;
+      riga.append(cella);
+    });
+    corpo.append(riga);
+  });
+  tabella.append(intestazione, corpo);
+  elementi.orderItems.replaceChildren(tabella);
+  elementi.orderTotal.textContent = formattaPrezzo(ordine.totale);
+}
+
+function escapeHtml(testo) {
+  const caratteriHtml = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  };
+  return String(testo ?? "").replace(/[&<>"']/g, (carattere) => caratteriHtml[carattere]);
+}
+
+function scaricaBollaSpedizione() {
+  if (!ordineCorrente) return;
+  const ordine = ordineCorrente;
+  const destinatario = ordine.destinatario;
+  const righeCliente = [
+    ["Nome o ragione sociale", destinatario.nome],
+    ["Telefono", destinatario.telefono],
+    ["Email", destinatario.email],
+    ["Indirizzo", destinatario.indirizzo],
+    ["CAP", destinatario.cap],
+    ["Città", destinatario.citta],
+    ["Provincia", destinatario.provincia],
+    ["Note per la consegna", destinatario.note]
+  ].filter(([, valore]) => valore)
+    .map(([etichetta, valore]) => `<p><strong>${escapeHtml(etichetta)}:</strong> ${escapeHtml(valore)}</p>`)
+    .join("");
+  const righeProdotti = ordine.items.map((articolo) =>
+    `<tr><td>${escapeHtml(articolo.nome)}</td><td>${escapeHtml(articolo.codice || "—")}</td><td>${escapeHtml(articolo.confezione || "—")}</td><td>${articolo.quantita}</td><td>${escapeHtml(formattaPrezzo(articolo.prezzo))}</td><td>${escapeHtml(formattaPrezzo(articolo.subtotale))}</td></tr>`
+  ).join("");
+  const html = `<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bolla di spedizione ${escapeHtml(ordine.numero)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;color:#26352f;margin:32px;line-height:1.45}
+    main{max-width:900px;margin:auto}h1{color:#2F5D50}table{width:100%;border-collapse:collapse;margin-top:20px}
+    th,td{padding:9px;border:1px solid #d9ded8;text-align:left}th{background:#f2f6f3}
+    .totale{text-align:right;font-size:1.2rem;font-weight:bold;margin-top:20px}
+    @media print{body{margin:0}main{max-width:none}}
+    @media(max-width:600px){body{margin:14px}table{font-size:.78rem}th,td{padding:5px}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bolla di spedizione</h1>
+    <p><strong>Ordine:</strong> ${escapeHtml(ordine.numero)}</p>
+    <p><strong>Data:</strong> ${escapeHtml(new Intl.DateTimeFormat("it-IT", { dateStyle: "long", timeStyle: "short" }).format(ordine.creatoIl))}</p>
+    <h2>Destinatario</h2>
+    ${righeCliente}
+    <h2>Prodotti</h2>
+    <table><thead><tr><th>Prodotto</th><th>Codice</th><th>Confezione</th><th>Qtà</th><th>Prezzo unitario</th><th>Subtotale</th></tr></thead><tbody>${righeProdotti}</tbody></table>
+    <p class="totale">Totale: ${escapeHtml(formattaPrezzo(ordine.totale))}</p>
+    <p>Documento generato dal gestionale Dolcevolta.</p>
+  </main>
+</body>
+</html>`;
+  const file = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `bolla-${ordine.numero.replace(/[^A-Za-z0-9-]/g, "")}.html`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function evidenziaTesto(testo, termini) {
@@ -1120,6 +1449,7 @@ function iniziaAscolto() {
   interrompiAscolto = onSnapshot(prodottiRef, { includeMetadataChanges: true }, (istantanea) => {
     prodotti = istantanea.docs.map((documento) => ({ id: documento.id, ...documento.data() }))
       .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "it"));
+    catalogoCaricato = true;
     aggiornaCategorie();
     filtraProdotti();
     aggiornaCarrello();
@@ -1135,6 +1465,38 @@ function iniziaAscolto() {
     mostraMessaggio(elementi.appMessage, errore.code === "permission-denied"
       ? "Accesso ai prodotti negato: verifica login e regole Firestore."
       : "Non riesco a caricare i prodotti. Controlla la connessione e riprova.");
+  });
+}
+
+function iniziaAscoltoCarrello(uid) {
+  if (interrompiCarrelloAscolto) interrompiCarrelloAscolto();
+  carrello.clear();
+  carrelloCaricato = false;
+  scritturaCarrello = Promise.resolve();
+  aggiornaCarrello();
+  interrompiCarrelloAscolto = onSnapshot(doc(db, "carrelli", uid), (istantanea) => {
+    if (utenteCorrente?.uid !== uid) return;
+    const articoli = istantanea.exists() ? istantanea.data().items : [];
+    const carrelloCaricatoDaFirestore = new Map();
+    if (Array.isArray(articoli)) {
+      articoli.forEach((articolo) => {
+        if (typeof articolo?.productId === "string"
+          && Number.isInteger(articolo.quantita)
+          && articolo.quantita > 0) {
+          carrelloCaricatoDaFirestore.set(articolo.productId, { quantita: articolo.quantita });
+        }
+      });
+    }
+    carrello = carrelloCaricatoDaFirestore;
+    carrelloCaricato = true;
+    elementi.cartMessage.textContent = "";
+    aggiornaCarrello();
+  }, (errore) => {
+    console.error("Errore durante il caricamento del carrello:", errore);
+    carrelloCaricato = false;
+    mostraMessaggio(elementi.cartMessage, errore.code === "permission-denied"
+      ? "Accesso al carrello negato: pubblica le nuove regole Firestore."
+      : "Non è stato possibile caricare il carrello. Controlla la connessione e riprova.");
   });
 }
 
@@ -1184,12 +1546,21 @@ onAuthStateChanged(auth, (utente) => {
   elementi.loginView.hidden = Boolean(utente);
   elementi.appView.hidden = !utente;
   if (utente) {
+    utenteCorrente = utente;
     mostraCarrello(false);
     iniziaAscolto();
+    iniziaAscoltoCarrello(utente.uid);
   }
   else {
     if (interrompiAscolto) interrompiAscolto();
     interrompiAscolto = null;
+    if (interrompiCarrelloAscolto) interrompiCarrelloAscolto();
+    interrompiCarrelloAscolto = null;
+    utenteCorrente = null;
+    carrelloCaricato = false;
+    catalogoCaricato = false;
+    scritturaCarrello = Promise.resolve();
+    ordineCorrente = null;
     prodotti = [];
     carrello.clear();
     elementi.productList.replaceChildren();
@@ -1204,6 +1575,16 @@ elementi.cartButton.addEventListener("click", () => mostraCarrello(elementi.cart
 elementi.backToCatalogButton.addEventListener("click", () => mostraCarrello(false));
 elementi.cartItems.addEventListener("click", gestisciAzioneCarrello);
 elementi.clearCartButton.addEventListener("click", svuotaCarrello);
+elementi.placeOrderButton.addEventListener("click", apriConfermaOrdine);
+elementi.checkoutForm.addEventListener("submit", inviaOrdine);
+elementi.checkoutForm.querySelectorAll("[data-close-checkout]").forEach((pulsante) => {
+  pulsante.addEventListener("click", () => elementi.checkoutDialog.close());
+});
+elementi.checkoutDialog.addEventListener("click", (evento) => {
+  if (evento.target === elementi.checkoutDialog) elementi.checkoutDialog.close();
+});
+elementi.orderBackToCatalogButton.addEventListener("click", () => mostraCarrello(false));
+elementi.downloadShippingNoteButton.addEventListener("click", scaricaBollaSpedizione);
 elementi.categoryFilter.addEventListener("change", filtraProdotti);
 elementi.addProductButton.addEventListener("click", () => apriFormProdotto());
 elementi.productForm.addEventListener("submit", salvaProdotto);
