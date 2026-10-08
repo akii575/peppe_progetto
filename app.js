@@ -49,6 +49,7 @@ const db = initializeFirestore(appFirebase, {
 });
 
 const elementi = {
+  authLoadingView: document.getElementById("auth-loading-view"),
   loginView: document.getElementById("login-view"),
   loginForm: document.getElementById("login-form"),
   loginMessage: document.getElementById("login-message"),
@@ -1997,6 +1998,7 @@ elementi.logoutButton.addEventListener("click", async () => {
 });
 
 onAuthStateChanged(auth, (utente) => {
+  elementi.authLoadingView.hidden = true;
   elementi.loginView.hidden = Boolean(utente);
   elementi.appView.hidden = !utente;
   if (utente) {
@@ -2030,6 +2032,12 @@ onAuthStateChanged(auth, (utente) => {
     aggiornaCarrello();
     chiudiSuggerimenti();
   }
+}, (errore) => {
+  console.error("Errore durante il ripristino della sessione:", errore);
+  elementi.authLoadingView.hidden = true;
+  elementi.loginView.hidden = false;
+  elementi.appView.hidden = true;
+  mostraMessaggio(elementi.loginMessage, "Non è stato possibile verificare la sessione. Ricarica la pagina.");
 });
 
 elementi.brandHome.addEventListener("click", (evento) => {
