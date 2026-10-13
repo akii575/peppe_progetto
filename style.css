@@ -222,7 +222,6 @@ textarea { min-height: 88px; resize: vertical; }
 .ddt-goods-details[open] { padding-top: 6px; border-top: 1px dashed #cbd5ce; }
 .ddt-goods-details .form-row { margin-top: 5px; }
 .photo-help { margin: 7px 0; font-size: .8rem; }
-.photo-batch-help { flex-basis: 100%; font-size: .82rem; }
 .photo-preview-wrap { display: grid; min-height: 150px; place-items: center; overflow: hidden; border: 1px dashed #d5d9d3; border-radius: 12px; background: #f8f7f2; }
 .photo-preview { max-width: 100%; max-height: 240px; object-fit: contain; }
 .photo-placeholder { padding: 20px; color: var(--muted); font-size: .88rem; }
