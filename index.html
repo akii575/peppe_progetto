@@ -217,7 +217,7 @@
     </dialog>
 
     <dialog id="checkout-dialog" class="dialog checkout-dialog">
-      <form id="checkout-form" class="dialog-card">
+      <form id="checkout-form" class="dialog-card" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">DATI ORDINE E DOCUMENTO</p>
@@ -226,12 +226,15 @@
           <button class="icon-button" type="button" data-close-checkout aria-label="Chiudi">×</button>
         </div>
         <p id="checkout-message" class="message" role="alert" aria-live="assertive"></p>
-        <fieldset class="form-section">
-          <legend>Testata DDT</legend>
-          <div class="form-row">
+        <div id="checkout-scroll-content" class="checkout-scroll-content">
+          <details class="checkout-accordion" open>
+            <summary>Testata DDT <span class="checkout-section-status" data-required-status></span></summary>
+            <fieldset class="form-section">
+              <legend class="visually-hidden">Testata DDT</legend>
+          <div class="form-row form-row-stack-mobile">
             <div>
               <label for="ddt-date">Data documento <span class="required">*</span></label>
-              <input id="ddt-date" name="ddt-data" type="date" required>
+              <input id="ddt-date" name="ddt-data" type="date" autocomplete="off" enterkeyhint="next" required>
             </div>
             <div>
               <label for="ddt-reason">Causale trasporto <span class="required">*</span></label>
@@ -246,52 +249,55 @@
             </div>
           </div>
           <p class="muted">Il numero DDT viene assegnato in modo progressivo al momento della conferma.</p>
-        </fieldset>
+            </fieldset>
+          </details>
 
-        <fieldset class="form-section">
-          <legend>Emittente / mittente</legend>
+          <details class="checkout-accordion">
+            <summary>Emittente / mittente <span class="checkout-section-status" data-required-status></span></summary>
+            <fieldset class="form-section">
+              <legend class="visually-hidden">Emittente / mittente</legend>
           <label for="sender-name">Ragione sociale <span class="required">*</span></label>
-          <input id="sender-name" name="mittente-ragione-sociale" type="text" maxlength="140" required>
-          <div class="form-row">
+          <input id="sender-name" name="mittente-ragione-sociale" type="text" maxlength="140" autocomplete="organization" enterkeyhint="next" required>
+          <div class="form-row form-row-short">
             <div>
               <label for="sender-vat">Partita IVA <span class="required">*</span></label>
-              <input id="sender-vat" name="mittente-partita-iva" type="text" maxlength="25" required>
+              <input id="sender-vat" name="mittente-partita-iva" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next" maxlength="25" required>
             </div>
             <div>
               <label for="sender-tax-code">Codice fiscale</label>
-              <input id="sender-tax-code" name="mittente-codice-fiscale" type="text" maxlength="20">
+              <input id="sender-tax-code" name="mittente-codice-fiscale" type="text" autocomplete="off" enterkeyhint="next" maxlength="20">
             </div>
           </div>
           <label for="sender-address">Indirizzo sede legale <span class="required">*</span></label>
-          <input id="sender-address" name="mittente-via" type="text" maxlength="180" required>
-          <div class="form-row">
+          <input id="sender-address" name="mittente-via" type="text" autocomplete="street-address" enterkeyhint="next" maxlength="180" required>
+          <div class="form-row form-row-short">
             <div>
               <label for="sender-postal-code">CAP <span class="required">*</span></label>
-              <input id="sender-postal-code" name="mittente-cap" type="text" maxlength="20" required>
+              <input id="sender-postal-code" name="mittente-cap" type="text" inputmode="numeric" autocomplete="postal-code" enterkeyhint="next" maxlength="20" required>
             </div>
             <div>
               <label for="sender-city">Comune <span class="required">*</span></label>
-              <input id="sender-city" name="mittente-comune" type="text" maxlength="100" required>
+              <input id="sender-city" name="mittente-comune" type="text" autocomplete="address-level2" enterkeyhint="next" maxlength="100" required>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row form-row-short">
             <div>
               <label for="sender-province">Provincia <span class="required">*</span></label>
-              <input id="sender-province" name="mittente-provincia" type="text" maxlength="80" required>
+              <input id="sender-province" name="mittente-provincia" type="text" autocomplete="address-level1" enterkeyhint="next" maxlength="80" required>
             </div>
             <div>
               <label for="sender-country">Nazione <span class="required">*</span></label>
-              <input id="sender-country" name="mittente-nazione" type="text" maxlength="2" value="IT" required>
+              <input id="sender-country" name="mittente-nazione" type="text" autocomplete="country" enterkeyhint="next" maxlength="2" value="IT" required>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row form-row-short">
             <div>
               <label for="sender-phone">Telefono</label>
-              <input id="sender-phone" name="mittente-telefono" type="tel" maxlength="40">
+              <input id="sender-phone" name="mittente-telefono" type="tel" autocomplete="tel" inputmode="tel" enterkeyhint="next" maxlength="40">
             </div>
             <div>
               <label for="sender-email">Email</label>
-              <input id="sender-email" name="mittente-email" type="email" maxlength="180">
+              <input id="sender-email" name="mittente-email" type="email" autocomplete="email" inputmode="email" enterkeyhint="next" maxlength="180">
             </div>
           </div>
           <label class="checkbox-field" for="sender-different-departure">
@@ -301,59 +307,62 @@
           <fieldset id="sender-departure-fields" class="form-subsection" disabled hidden>
             <legend>Indirizzo di partenza merce</legend>
             <label for="departure-address">Via e numero civico <span class="required">*</span></label>
-            <input id="departure-address" name="partenza-via" type="text" maxlength="180" required>
-            <div class="form-row">
+            <input id="departure-address" name="partenza-via" type="text" autocomplete="street-address" enterkeyhint="next" maxlength="180" required>
+            <div class="form-row form-row-short">
               <div>
                 <label for="departure-postal-code">CAP <span class="required">*</span></label>
-                <input id="departure-postal-code" name="partenza-cap" type="text" maxlength="20" required>
+                <input id="departure-postal-code" name="partenza-cap" type="text" inputmode="numeric" autocomplete="postal-code" enterkeyhint="next" maxlength="20" required>
               </div>
               <div>
                 <label for="departure-city">Comune <span class="required">*</span></label>
-                <input id="departure-city" name="partenza-comune" type="text" maxlength="100" required>
+                <input id="departure-city" name="partenza-comune" type="text" autocomplete="address-level2" enterkeyhint="next" maxlength="100" required>
               </div>
             </div>
             <label for="departure-province">Provincia <span class="required">*</span></label>
-            <input id="departure-province" name="partenza-provincia" type="text" maxlength="80" required>
+            <input id="departure-province" name="partenza-provincia" type="text" autocomplete="address-level1" enterkeyhint="next" maxlength="80" required>
           </fieldset>
-        </fieldset>
+            </fieldset>
+          </details>
 
-        <fieldset class="form-section">
-          <legend>Destinatario</legend>
+          <details class="checkout-accordion">
+            <summary>Destinatario <span class="checkout-section-status" data-required-status></span></summary>
+            <fieldset class="form-section">
+              <legend class="visually-hidden">Destinatario</legend>
           <label for="customer-name">Nome o ragione sociale <span class="required">*</span></label>
-          <input id="customer-name" name="nome" type="text" maxlength="140" autocomplete="name" required>
-          <div class="form-row">
+          <input id="customer-name" name="nome" type="text" maxlength="140" autocomplete="name" enterkeyhint="next" required>
+          <div class="form-row form-row-short">
             <div>
               <label for="customer-tax-code">Partita IVA o codice fiscale <span class="required">*</span></label>
-              <input id="customer-tax-code" name="destinatario-partita-iva-cf" type="text" maxlength="25" required>
+              <input id="customer-tax-code" name="destinatario-partita-iva-cf" type="text" inputmode="text" autocomplete="off" enterkeyhint="next" maxlength="25" required>
             </div>
             <div>
               <label for="customer-phone">Telefono <span class="required">*</span></label>
-              <input id="customer-phone" name="telefono" type="tel" maxlength="40" autocomplete="tel" required>
+              <input id="customer-phone" name="telefono" type="tel" maxlength="40" autocomplete="tel" inputmode="tel" enterkeyhint="next" required>
             </div>
           </div>
           <label for="customer-email">Email</label>
-          <input id="customer-email" name="email" type="email" maxlength="180" autocomplete="email">
+          <input id="customer-email" name="email" type="email" maxlength="180" autocomplete="email" inputmode="email" enterkeyhint="next">
           <h3>Sede legale</h3>
           <label for="customer-address">Via e numero civico <span class="required">*</span></label>
-          <input id="customer-address" name="indirizzo" type="text" maxlength="180" autocomplete="street-address" required>
-          <div class="form-row">
+          <input id="customer-address" name="indirizzo" type="text" maxlength="180" autocomplete="street-address" enterkeyhint="next" required>
+          <div class="form-row form-row-short">
             <div>
               <label for="customer-postal-code">CAP <span class="required">*</span></label>
-              <input id="customer-postal-code" name="cap" type="text" maxlength="20" autocomplete="postal-code" required>
+              <input id="customer-postal-code" name="cap" type="text" inputmode="numeric" maxlength="20" autocomplete="postal-code" enterkeyhint="next" required>
             </div>
             <div>
               <label for="customer-city">Comune <span class="required">*</span></label>
-              <input id="customer-city" name="citta" type="text" maxlength="100" autocomplete="address-level2" required>
+              <input id="customer-city" name="citta" type="text" maxlength="100" autocomplete="address-level2" enterkeyhint="next" required>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row form-row-short">
             <div>
               <label for="customer-province">Provincia <span class="required">*</span></label>
-              <input id="customer-province" name="provincia" type="text" maxlength="80" autocomplete="address-level1" required>
+              <input id="customer-province" name="provincia" type="text" maxlength="80" autocomplete="address-level1" enterkeyhint="next" required>
             </div>
             <div>
               <label for="customer-country">Nazione <span class="required">*</span></label>
-              <input id="customer-country" name="destinatario-nazione" type="text" maxlength="2" value="IT" required>
+              <input id="customer-country" name="destinatario-nazione" type="text" maxlength="2" value="IT" autocomplete="country" enterkeyhint="next" required>
             </div>
           </div>
           <label class="checkbox-field" for="customer-different-delivery">
@@ -363,32 +372,35 @@
           <fieldset id="customer-delivery-fields" class="form-subsection" disabled hidden>
             <legend>Luogo di destinazione</legend>
             <label for="delivery-address">Via e numero civico <span class="required">*</span></label>
-            <input id="delivery-address" name="consegna-via" type="text" maxlength="180" required>
-            <div class="form-row">
+            <input id="delivery-address" name="consegna-via" type="text" autocomplete="street-address" enterkeyhint="next" maxlength="180" required>
+            <div class="form-row form-row-short">
               <div>
                 <label for="delivery-postal-code">CAP <span class="required">*</span></label>
-                <input id="delivery-postal-code" name="consegna-cap" type="text" maxlength="20" required>
+                <input id="delivery-postal-code" name="consegna-cap" type="text" inputmode="numeric" autocomplete="postal-code" enterkeyhint="next" maxlength="20" required>
               </div>
               <div>
                 <label for="delivery-city">Comune <span class="required">*</span></label>
-                <input id="delivery-city" name="consegna-comune" type="text" maxlength="100" required>
+                <input id="delivery-city" name="consegna-comune" type="text" autocomplete="address-level2" enterkeyhint="next" maxlength="100" required>
               </div>
             </div>
-            <div class="form-row">
+            <div class="form-row form-row-short">
               <div>
                 <label for="delivery-province">Provincia <span class="required">*</span></label>
-                <input id="delivery-province" name="consegna-provincia" type="text" maxlength="80" required>
+                <input id="delivery-province" name="consegna-provincia" type="text" autocomplete="address-level1" enterkeyhint="next" maxlength="80" required>
               </div>
               <div>
                 <label for="delivery-country">Nazione <span class="required">*</span></label>
-                <input id="delivery-country" name="consegna-nazione" type="text" maxlength="2" value="IT" required>
+                <input id="delivery-country" name="consegna-nazione" type="text" maxlength="2" value="IT" autocomplete="country" enterkeyhint="next" required>
               </div>
             </div>
           </fieldset>
           <label for="customer-notes">Note per la consegna</label>
           <textarea id="customer-notes" name="note" rows="3" maxlength="1000"></textarea>
-        </fieldset>
+            </fieldset>
+          </details>
 
+          <details class="checkout-accordion">
+            <summary>Righe merce <span class="checkout-section-status" data-required-status></span></summary>
         <section class="form-section" aria-labelledby="ddt-goods-title">
           <h3 id="ddt-goods-title">Righe merce</h3>
           <p class="muted">Controlla quantità, descrizione e importo. L’importo si aggiorna in base alla quantità; codice e tracciabilità sono nei dettagli facoltativi.</p>
@@ -401,10 +413,13 @@
             <div id="ddt-goods-lines" class="ddt-goods-lines"></div>
           </div>
         </section>
+          </details>
 
-        <fieldset class="form-section">
-          <legend>Dati trasporto e logistica</legend>
-          <div class="form-row">
+          <details class="checkout-accordion">
+            <summary>Dati trasporto e logistica <span class="checkout-section-status" data-required-status></span></summary>
+            <fieldset class="form-section">
+              <legend class="visually-hidden">Dati trasporto e logistica</legend>
+          <div class="form-row form-row-stack-mobile">
             <div>
               <label for="transport-start">Inizio trasporto <span class="required">*</span></label>
               <input id="transport-start" name="trasporto-inizio" type="datetime-local" required>
@@ -422,18 +437,18 @@
             <legend>Dati vettore terzo</legend>
             <label for="carrier-name">Ragione sociale <span class="required">*</span></label>
             <input id="carrier-name" name="vettore-ragione-sociale" type="text" maxlength="140" required>
-            <div class="form-row">
+            <div class="form-row form-row-stack-mobile">
               <div>
                 <label for="carrier-vat">Partita IVA <span class="required">*</span></label>
-                <input id="carrier-vat" name="vettore-partita-iva" type="text" maxlength="25" required>
+                <input id="carrier-vat" name="vettore-partita-iva" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="next" maxlength="25" required>
               </div>
               <div>
                 <label for="carrier-address">Indirizzo <span class="required">*</span></label>
-                <input id="carrier-address" name="vettore-indirizzo" type="text" maxlength="180" required>
+                <input id="carrier-address" name="vettore-indirizzo" type="text" autocomplete="street-address" enterkeyhint="next" maxlength="180" required>
               </div>
             </div>
           </fieldset>
-          <div class="form-row">
+          <div class="form-row form-row-short">
             <div>
               <label for="transport-port">Porto</label>
               <select id="transport-port" name="trasporto-porto">
@@ -447,7 +462,7 @@
               <input id="package-count" name="trasporto-colli" type="number" min="1" step="1" value="1" required>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row form-row-short">
             <div>
               <label for="goods-appearance">Aspetto esteriore beni <span class="required">*</span></label>
               <select id="goods-appearance" name="trasporto-aspetto" required>
@@ -469,9 +484,11 @@
               </div>
             </div>
           </div>
-        </fieldset>
+            </fieldset>
+          </details>
 
         <p class="muted">Il DDT include sempre tre riquadri firma: mittente, vettore e destinatario.</p>
+        </div>
         <div class="dialog-actions">
           <button class="button button-secondary" type="button" data-close-checkout>Annulla</button>
           <button id="confirm-order-button" class="button button-primary" type="submit">Conferma ordine e genera DDT</button>

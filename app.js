@@ -1335,6 +1335,37 @@ function creaDatiDdt(modulo, righeOrdine) {
   };
 }
 
+function aggiornaStatoSezioniCheckout() {
+  elementi.checkoutForm.querySelectorAll(".checkout-accordion").forEach((sezione) => {
+    const badge = sezione.querySelector("[data-required-status]");
+    if (!badge) return;
+    const obbligatori = [...sezione.querySelectorAll(":required")]
+      .filter((campo) => !campo.matches(":disabled"));
+    const mancanti = obbligatori.filter((campo) => !campo.validity.valid).length;
+    badge.textContent = mancanti ? `${mancanti} da compilare` : "Completo";
+    badge.dataset.missing = String(mancanti > 0);
+  });
+}
+
+function validaCheckout() {
+  const campoNonValido = [...elementi.checkoutForm.querySelectorAll("input, select, textarea")]
+    .find((campo) => !campo.matches(":disabled") && !campo.validity.valid);
+  if (!campoNonValido) return true;
+
+  const sezione = campoNonValido.closest(".checkout-accordion");
+  if (sezione) {
+    sezione.open = true;
+    elementi.checkoutForm.querySelectorAll(".checkout-accordion").forEach((altraSezione) => {
+      if (altraSezione !== sezione) altraSezione.open = false;
+    });
+  }
+  requestAnimationFrame(() => {
+    campoNonValido.scrollIntoView({ block: "center", inline: "nearest" });
+    campoNonValido.reportValidity();
+  });
+  return false;
+}
+
 function apriConfermaOrdine() {
   if (!navigator.onLine) {
     mostraMessaggio(elementi.cartMessage, "Connettiti a internet per inviare l'ordine.");
@@ -1348,6 +1379,9 @@ function apriConfermaOrdine() {
     const righe = raccogliRigheOrdine();
     mostraMessaggio(elementi.checkoutMessage, "");
     elementi.checkoutForm.reset();
+    elementi.checkoutForm.querySelectorAll(".checkout-accordion").forEach((sezione, indice) => {
+      sezione.open = indice === 0;
+    });
     ripristinaMittenteDdt();
     const oraLocale = new Date();
     const valoreDataOraLocale = new Date(
@@ -1357,6 +1391,7 @@ function apriConfermaOrdine() {
     elementi.transportStart.value = valoreDataOraLocale.slice(0, 16);
     aggiornaCampiCondizionaliDdt();
     mostraRigheMerceDdt(righe);
+    aggiornaStatoSezioniCheckout();
     elementi.checkoutDialog.showModal();
   } catch (errore) {
     mostraMessaggio(elementi.cartMessage, errore.message);
@@ -1381,6 +1416,7 @@ async function inviaOrdine(evento) {
     mostraMessaggio(elementi.checkoutMessage, "Connettiti a internet e accedi per inviare l'ordine.");
     return;
   }
+  if (!validaCheckout()) return;
 
   let righe;
   try {
@@ -1594,7 +1630,7 @@ function scaricaBollaSpedizione() {
     </tr>`;
   }).join("");
   const righeVuote = Array.from(
-    { length: Math.max(0, 16 - ddt.righe_merce.length) },
+    { length: Math.max(0, 10 - ddt.righe_merce.length) },
     () => '<tr class="riga-vuota" aria-hidden="true"><td></td><td></td><td></td></tr>'
   ).join("");
   const partenza = mittente.indirizzo_partenza_merce;
@@ -1625,13 +1661,13 @@ function scaricaBollaSpedizione() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DDT ${escapeHtml(testata.numero_ddt)}</title>
   <style>
-    @page{size:A4 portrait;margin:7mm}
+    @page{size:A4 portrait;margin:6mm}
     *{box-sizing:border-box}
     html{background:#e9edf2;color:#152b43;font-family:Arial,Helvetica,sans-serif}
     body{margin:0;font-size:9pt;line-height:1.2}
     .toolbar{display:flex;justify-content:flex-end;width:min(196mm,calc(100% - 24px));margin:12px auto}
     .toolbar button{min-height:42px;padding:9px 16px;border:0;border-radius:6px;background:#07569a;color:#fff;font:700 10pt Arial,Helvetica,sans-serif;cursor:pointer}
-    main{width:min(196mm,calc(100% - 24px));min-height:280mm;margin:0 auto 20px;padding:4mm;border:1.5px solid #07569a;background:#fff}
+    main{width:min(196mm,calc(100% - 24px));margin:0 auto 20px;padding:4mm;border:1.5px solid #07569a;background:#fff}
     h1,h2,h3,p{margin:0}
     .ddt-header{display:grid;grid-template-columns:1.05fr .95fr;min-height:29mm;border-bottom:1.5px solid #07569a}
     .mittente,.titolo-documento{min-width:0;padding:2mm}
@@ -1660,14 +1696,14 @@ function scaricaBollaSpedizione() {
     .tabella-wrap{margin-top:0}
     table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt}
     col.quantita{width:16%}col.descrizione{width:66%}col.importo{width:18%}
-    th,td{height:8mm;padding:1.2mm 2mm;border:1px solid #07569a;vertical-align:middle;overflow-wrap:anywhere}
-    th{height:7mm;background:#07569a;color:#fff;font-size:8pt;text-align:center;text-transform:uppercase;letter-spacing:.025em}
+    th,td{height:6mm;padding:.8mm 1.5mm;border:1px solid #07569a;vertical-align:middle;overflow-wrap:anywhere}
+    th{height:6mm;background:#07569a;color:#fff;font-size:8pt;text-align:center;text-transform:uppercase;letter-spacing:.025em}
     td.quantita,td.importo{text-align:center}
     td.importo{background:#e4e8ef}
     tbody tr:nth-child(even):not(.riga-vuota) td{background:#f2f5f9}
     tbody tr:nth-child(even):not(.riga-vuota) td.importo{background:#dfe5ef}
     .codice-articolo{display:block;margin-top:1mm;color:#435c77;font-size:7pt}
-    .riga-vuota td{height:8mm}
+    .riga-vuota td{height:6mm}
     .totali{display:grid;grid-template-columns:.65fr .75fr .7fr 1.4fr 1.1fr}
     .totali .cella{min-height:12mm}
     .totale{background:#e4e8ef}
@@ -1701,6 +1737,21 @@ function scaricaBollaSpedizione() {
       html,body{background:#fff}
       .toolbar{display:none!important}
       main{width:100%;min-height:0;margin:0;padding:0;border:1.5px solid #07569a}
+      .ddt-header{grid-template-columns:1.05fr .95fr;min-height:24mm}
+      .mittente{border-right:1.5px solid #07569a;border-bottom:0}
+      .riga-metadati{grid-template-columns:1.35fr 1.15fr 1fr 1.35fr}
+      .riga-metadati .cella:first-child{grid-column:auto}
+      .totali{grid-template-columns:.65fr .75fr .7fr 1.4fr 1.1fr}
+      .firme{grid-template-columns:1fr 1fr 1fr}
+      .firma{border-right:1px solid #07569a;border-bottom:0}
+      .firma:last-child{border-right:0}
+      .cella{min-height:10mm;padding:1mm 1.5mm}
+      .cella.destinatario{min-height:14mm}
+      .riga-metadati .cella{min-height:9mm}
+      .totali .cella{min-height:9mm}
+      .firma{min-height:16mm;padding:1.5mm}
+      .firma .spazio-firma{height:6mm;margin-top:1mm}
+      .annotazioni{min-height:10mm;padding:1.2mm}
       .cella,.firma,.annotazioni{break-inside:avoid;page-break-inside:avoid}
       thead{display:table-header-group}
       tr{break-inside:avoid;page-break-inside:avoid}
@@ -2793,7 +2844,18 @@ elementi.checkoutForm.addEventListener("submit", inviaOrdine);
 elementi.senderDepartureToggle.addEventListener("change", aggiornaCampiCondizionaliDdt);
 elementi.customerDeliveryToggle.addEventListener("change", aggiornaCampiCondizionaliDdt);
 elementi.carrierType.addEventListener("change", aggiornaCampiCondizionaliDdt);
+elementi.checkoutForm.addEventListener("input", aggiornaStatoSezioniCheckout);
+elementi.checkoutForm.addEventListener("change", aggiornaStatoSezioniCheckout);
+elementi.checkoutForm.querySelectorAll(".checkout-accordion").forEach((sezione) => {
+  sezione.addEventListener("toggle", () => {
+    if (!sezione.open) return;
+    elementi.checkoutForm.querySelectorAll(".checkout-accordion").forEach((altraSezione) => {
+      if (altraSezione !== sezione) altraSezione.open = false;
+    });
+  });
+});
 aggiornaCampiCondizionaliDdt();
+aggiornaStatoSezioniCheckout();
 elementi.checkoutForm.querySelectorAll("[data-close-checkout]").forEach((pulsante) => {
   pulsante.addEventListener("click", () => elementi.checkoutDialog.close());
 });
