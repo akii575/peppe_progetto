@@ -134,7 +134,7 @@ const elementi = {
   orderCustomer: document.getElementById("order-customer"),
   orderItems: document.getElementById("order-items"),
   orderTotal: document.getElementById("order-total"),
-  downloadShippingNoteButton: document.getElementById("download-shipping-note"),
+  printShippingNoteButton: document.getElementById("print-shipping-note"),
   connectionMessage: document.getElementById("connection-message"),
   toolbar: document.querySelector(".toolbar"),
   toolbarImport: document.querySelector(".toolbar-import"),
@@ -1494,10 +1494,9 @@ async function inviaOrdine(evento) {
     mostraRiepilogoOrdine(ordineCorrente);
     mostraMessaggio(
       elementi.orderSummaryMessage,
-      "Ordine inviato. Avvio il download della bolla; se non compare, usa il pulsante Scarica bolla finale.",
+      "Ordine inviato. Usa “Stampa / salva PDF” per salvare la bolla in PDF o stamparla.",
       "successo"
     );
-    scaricaBollaSpedizione();
   } catch (errore) {
     console.error(`Errore durante ${faseInvio}:`, errore);
     mostraMessaggio(elementi.checkoutMessage, messaggioErroreOrdine(errore, faseInvio));
@@ -1594,7 +1593,7 @@ function indirizzoHtmlDdt(indirizzo) {
   ].filter(Boolean).map(escapeHtml).join("<br>");
 }
 
-function scaricaBollaSpedizione() {
+function stampaBollaPdf() {
   if (!ordineCorrente) return;
   const ddt = ordineCorrente.ddt;
   if (!ddt) {
@@ -1863,15 +1862,27 @@ function scaricaBollaSpedizione() {
   </main>
 </body>
 </html>`;
-  const file = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(file);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `DDT-${testata.numero_ddt.replace(/[^A-Za-z0-9-]/g, "-")}.html`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const finestraStampa = window.open("", "_blank");
+  if (!finestraStampa) {
+    mostraMessaggio(
+      elementi.orderSummaryMessage,
+      "Il browser ha bloccato la finestra di stampa. Consenti i popup per questo sito e riprova."
+    );
+    return;
+  }
+  finestraStampa.document.open();
+  finestraStampa.document.write(html);
+  finestraStampa.document.close();
+  window.setTimeout(() => {
+    if (finestraStampa.closed) return;
+    if (typeof finestraStampa.print !== "function") {
+      mostraMessaggio(elementi.orderSummaryMessage, "Questo browser non supporta la stampa del documento.");
+      finestraStampa.close();
+      return;
+    }
+    finestraStampa.focus();
+    finestraStampa.print();
+  }, 300);
 }
 
 function evidenziaTesto(testo, termini) {
@@ -2863,7 +2874,7 @@ elementi.checkoutDialog.addEventListener("click", (evento) => {
   if (evento.target === elementi.checkoutDialog) elementi.checkoutDialog.close();
 });
 elementi.orderBackToCatalogButton.addEventListener("click", () => mostraCarrello(false));
-elementi.downloadShippingNoteButton.addEventListener("click", scaricaBollaSpedizione);
+elementi.printShippingNoteButton.addEventListener("click", stampaBollaPdf);
 elementi.categoryFilter.addEventListener("change", filtraProdotti);
 elementi.addProductButton.addEventListener("click", () => apriFormProdotto());
 elementi.productForm.addEventListener("submit", salvaProdotto);
