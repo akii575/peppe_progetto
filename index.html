@@ -81,10 +81,11 @@
           <div class="toolbar-import">
             <input id="json-file" type="file" accept=".json" hidden>
             <button id="import-button" class="button button-secondary" type="button">Importa JSON</button>
-            <input id="photo-batch-files" type="file" accept="image/*" multiple hidden>
-            <button id="photo-batch-button" class="button button-secondary" type="button">Seleziona foto</button>
+            <input id="photo-batch-files" type="file" accept="image/png,.png" multiple hidden>
+            <button id="photo-batch-button" class="button button-secondary" type="button">Importa foto per codice</button>
             <span id="import-progress" class="muted" role="status" aria-live="polite"></span>
             <span id="photo-batch-progress" class="muted" role="status" aria-live="polite"></span>
+            <span class="muted photo-batch-help">Usa il codice esatto nel nome: CODICE.png oppure CODICE_1.png, CODICE_2.png. Le foto gia' presenti non vengono sostituite.</span>
           </div>
         </section>
 
@@ -390,8 +391,15 @@
 
         <section class="form-section" aria-labelledby="ddt-goods-title">
           <h3 id="ddt-goods-title">Righe merce</h3>
-          <p class="muted">Verifica descrizioni e quantità spedite. Lotto, scadenza e numero di serie sono facoltativi.</p>
-          <div id="ddt-goods-lines"></div>
+          <p class="muted">Controlla quantità, descrizione e importo. L’importo si aggiorna in base alla quantità; codice e tracciabilità sono nei dettagli facoltativi.</p>
+          <div class="ddt-goods-table">
+            <div class="ddt-goods-heading" aria-hidden="true">
+              <span>Quantità</span>
+              <span>Descrizione dei beni (natura e qualità)</span>
+              <span>Importo (€)</span>
+            </div>
+            <div id="ddt-goods-lines" class="ddt-goods-lines"></div>
+          </div>
         </section>
 
         <fieldset class="form-section">

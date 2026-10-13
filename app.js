@@ -43,6 +43,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   initializeFirestore,
   onSnapshot,
@@ -1089,64 +1090,91 @@ function mostraRigheMerceDdt(righe) {
     const riga = document.createElement("fieldset");
     riga.className = "ddt-goods-line";
     const titolo = document.createElement("legend");
+    titolo.className = "visually-hidden";
     titolo.textContent = `Riga ${indice + 1}: ${articolo.nome}`;
     riga.append(titolo);
 
-    creaCampoDdt(riga, {
-      id: `ddt-item-description-${indice}`,
-      label: "Descrizione del bene",
-      value: `${articolo.nome}${articolo.confezione ? ` (${articolo.confezione})` : ""}`,
-      required: true,
-      maxLength: 180
-    });
-    const codiceQuantita = document.createElement("div");
-    codiceQuantita.className = "form-row";
-    creaCampoDdt(codiceQuantita, {
-      id: `ddt-item-code-${indice}`,
-      label: "Codice articolo",
-      value: articolo.codice,
-      maxLength: 60
-    });
-    creaCampoDdt(codiceQuantita, {
+    const campiPrincipali = document.createElement("div");
+    campiPrincipali.className = "ddt-goods-primary-row";
+    const quantita = creaCampoDdt(campiPrincipali, {
       id: `ddt-item-quantity-${indice}`,
-      label: "Quantità spedita",
+      label: "Quantità",
       type: "number",
       value: articolo.quantita,
       required: true,
       min: 0.01,
       step: 0.01
     });
-    riga.append(codiceQuantita);
+    creaCampoDdt(campiPrincipali, {
+      id: `ddt-item-description-${indice}`,
+      label: "Descrizione dei beni (natura e qualità)",
+      value: `${articolo.nome}${articolo.confezione ? ` (${articolo.confezione})` : ""}`,
+      required: true,
+      maxLength: 180
+    });
+    const riquadroImporto = document.createElement("div");
+    const etichettaImporto = document.createElement("label");
+    const outputImporto = document.createElement("output");
+    etichettaImporto.htmlFor = `ddt-item-import-${indice}`;
+    etichettaImporto.textContent = "Importo (€)";
+    outputImporto.id = `ddt-item-import-${indice}`;
+    outputImporto.htmlFor = quantita.id;
+    outputImporto.className = "ddt-item-import";
+    const importoIniziale = Number(articolo.prezzo) * Number(articolo.quantita);
+    outputImporto.textContent = Number.isFinite(importoIniziale)
+      ? formattaPrezzo(importoIniziale)
+      : "—";
+    riquadroImporto.append(etichettaImporto, outputImporto);
+    campiPrincipali.append(riquadroImporto);
+    quantita.addEventListener("input", () => {
+      const importo = Number(articolo.prezzo) * Number(quantita.value);
+      outputImporto.textContent = Number.isFinite(importo) && Number(quantita.value) > 0
+        ? formattaPrezzo(importo)
+        : "—";
+    });
+    riga.append(campiPrincipali);
 
-    const unitaLotto = document.createElement("div");
-    unitaLotto.className = "form-row";
-    creaCampoDdt(unitaLotto, {
+    const dettagli = document.createElement("details");
+    dettagli.className = "ddt-goods-details";
+    const riepilogoDettagli = document.createElement("summary");
+    riepilogoDettagli.textContent = "Dettagli facoltativi (codice, unità, lotto e tracciabilità)";
+    dettagli.append(riepilogoDettagli);
+
+    const codiceUnita = document.createElement("div");
+    codiceUnita.className = "form-row";
+    creaCampoDdt(codiceUnita, {
+      id: `ddt-item-code-${indice}`,
+      label: "Codice articolo",
+      value: articolo.codice,
+      maxLength: 60
+    });
+    creaCampoDdt(codiceUnita, {
       id: `ddt-item-unit-${indice}`,
       label: "Unità di misura",
       value: "PZ",
       required: true,
       options: [["PZ", "PZ"], ["KG", "KG"], ["M", "M"], ["L", "L"], ["NR", "NR"]]
     });
-    creaCampoDdt(unitaLotto, {
+
+    const lottoTracciabilita = document.createElement("div");
+    lottoTracciabilita.className = "form-row";
+    creaCampoDdt(lottoTracciabilita, {
       id: `ddt-item-lot-${indice}`,
       label: "Lotto",
       maxLength: 60
     });
-    riga.append(unitaLotto);
-
-    const scadenzaSerie = document.createElement("div");
-    scadenzaSerie.className = "form-row";
-    creaCampoDdt(scadenzaSerie, {
+    creaCampoDdt(lottoTracciabilita, {
       id: `ddt-item-expiry-${indice}`,
       label: "Data scadenza",
       type: "date"
     });
-    creaCampoDdt(scadenzaSerie, {
+    creaCampoDdt(lottoTracciabilita, {
       id: `ddt-item-serial-${indice}`,
       label: "Numero di serie",
       maxLength: 100
     });
-    riga.append(scadenzaSerie);
+    dettagli.append(codiceUnita, lottoTracciabilita);
+    riga.append(dettagli);
     contenitore.append(riga);
   });
 }
@@ -1232,7 +1260,8 @@ function creaDatiDdt(modulo, righeOrdine) {
       posizione: indice + 1,
       descrizione,
       quantita,
-      unita_misura: unitaMisura
+      unita_misura: unitaMisura,
+      importo: Math.round(Number(articolo.prezzo) * quantita * 100) / 100
     };
     const codice = valoreCampoRiga("code");
     const lotto = valoreCampoRiga("lot");
@@ -1289,7 +1318,8 @@ function creaDatiDdt(modulo, righeOrdine) {
       testata_documento: {
         numero_ddt: "",
         data_ddt: dataDdt,
-        causale_trasporto: valoreModulo(modulo, "ddt-causale")
+        causale_trasporto: valoreModulo(modulo, "ddt-causale"),
+        importo_totale: Math.round(righeMerce.reduce((totale, riga) => totale + riga.importo, 0) * 100) / 100
       },
       emittente_mittente: mittente,
       destinatario: destinatarioDdt,
@@ -1542,36 +1572,52 @@ function scaricaBollaSpedizione() {
   const logistica = ddt.dati_trasporto_e_logistica;
   const note = ddt.note_e_firme;
   const indirizzoDestinazione = destinatario.indirizzo_consegna || destinatario.indirizzo_sede_legale;
-  const campo = (etichetta, valore) => valore
-    ? `<p class="dato"><span>${escapeHtml(etichetta)}</span><strong>${escapeHtml(valore)}</strong></p>`
-    : "";
+  const campo = (etichetta, valore) => `<div class="campo"><span>${escapeHtml(etichetta)}</span><strong>${escapeHtml(valore === undefined || valore === null || valore === "" ? "—" : valore)}</strong></div>`;
   const datiVettore = logistica.dati_vettore;
-  const righeProdotti = ddt.righe_merce.map((articolo) => {
+  const righeProdotti = ddt.righe_merce.map((articolo, indice) => {
     const tracciabilita = [
       articolo.lotto ? `Lotto: ${articolo.lotto}` : "",
       articolo.data_scadenza ? `Scadenza: ${formattaDataDdt(articolo.data_scadenza)}` : "",
       articolo.numero_serie ? `N. serie: ${articolo.numero_serie}` : ""
     ].filter(Boolean).map(escapeHtml).join("<br>") || "—";
-    const quantita = new Intl.NumberFormat("it-IT", {
-      maximumFractionDigits: 2
-    }).format(articolo.quantita);
+    const quantita = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 }).format(articolo.quantita);
+    const importo = Number.isFinite(articolo.importo)
+      ? articolo.importo
+      : Number(ordineCorrente.items?.[indice]?.prezzo) * articolo.quantita;
+    const codice = articolo.codice_articolo
+      ? `<small class="codice-articolo">Codice: ${escapeHtml(articolo.codice_articolo)}</small>`
+      : "";
     return `<tr>
-      <td class="posizione">${articolo.posizione}</td>
-      <td class="codice">${escapeHtml(articolo.codice_articolo || "—")}</td>
-      <td>${escapeHtml(articolo.descrizione)}</td>
-      <td class="numero">${escapeHtml(quantita)}</td>
-      <td class="unita-misura">${escapeHtml(articolo.unita_misura)}</td>
-      <td class="tracciabilita">${tracciabilita}</td>
+      <td class="quantita">${escapeHtml(quantita)} ${escapeHtml(articolo.unita_misura || "PZ")}</td>
+      <td>${escapeHtml(articolo.descrizione)}${codice}${tracciabilita !== "—" ? `<small class="codice-articolo">${tracciabilita}</small>` : ""}</td>
+      <td class="importo">${Number.isFinite(importo) ? escapeHtml(formattaPrezzo(importo)) : "—"}</td>
     </tr>`;
   }).join("");
-  const vettore = datiVettore
-    ? `${escapeHtml(datiVettore.ragione_sociale)} · P.IVA ${escapeHtml(datiVettore.partita_iva)}<br>${escapeHtml(datiVettore.indirizzo)}`
-    : escapeHtml(logistica.vettore_tipo);
+  const righeVuote = Array.from(
+    { length: Math.max(0, 16 - ddt.righe_merce.length) },
+    () => '<tr class="riga-vuota" aria-hidden="true"><td></td><td></td><td></td></tr>'
+  ).join("");
   const partenza = mittente.indirizzo_partenza_merce;
-  const peso = [
-    logistica.peso_lordo_kg !== undefined ? `Lordo: ${logistica.peso_lordo_kg} kg` : "",
-    logistica.peso_netto_kg !== undefined ? `Netto: ${logistica.peso_netto_kg} kg` : ""
-  ].filter(Boolean).map(escapeHtml).join(" · ") || "Non indicato";
+  const totaleDocumento = Number.isFinite(testata.importo_totale)
+    ? testata.importo_totale
+    : ddt.righe_merce.reduce((totale, articolo, indice) => {
+      const importo = Number.isFinite(articolo.importo)
+        ? articolo.importo
+        : Number(ordineCorrente.items?.[indice]?.prezzo) * articolo.quantita;
+      return totale + (Number.isFinite(importo) ? importo : 0);
+    }, 0);
+  const dataOrdine = ordineCorrente.creatoIl instanceof Date
+    ? ordineCorrente.creatoIl
+    : ordineCorrente.creatoIl?.toDate?.() || null;
+  const dataOrdineFormattata = dataOrdine && !Number.isNaN(dataOrdine.getTime())
+    ? formattaDataDdt(dataOrdine.toISOString().slice(0, 10))
+    : "—";
+  const destinatarioAlternativo = Boolean(destinatario.indirizzo_consegna);
+  const destinatarioNome = logistica.vettore_tipo === "Destinatario";
+  const datiFiscaliMittente = [
+    mittente.partita_iva ? `P. IVA ${mittente.partita_iva}` : "",
+    mittente.codice_fiscale ? `C.F. ${mittente.codice_fiscale}` : ""
+  ].filter(Boolean).map(escapeHtml).join(" · ");
   const html = `<!doctype html>
 <html lang="it">
 <head>
@@ -1579,85 +1625,87 @@ function scaricaBollaSpedizione() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DDT ${escapeHtml(testata.numero_ddt)}</title>
   <style>
-    @page {
-      size: A4;
-      margin: 18mm 17mm 19mm;
-      @top-left {
-        content: "DOCUMENTO DI TRASPORTO - DDT ${escapeHtml(testata.numero_ddt)}";
-        color: #17324d;
-        font: 700 8pt Arial, Helvetica, sans-serif;
-      }
-      @bottom-right {
-        content: "Pagina " counter(page) " di " counter(pages);
-        color: #6b7280;
-        font: 8pt Arial, Helvetica, sans-serif;
-      }
-    }
+    @page{size:A4 portrait;margin:7mm}
     *{box-sizing:border-box}
-    html{color:#374151;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif}
-    body{margin:0;font-size:10pt;line-height:1.25}
-    main{max-width:210mm;margin:24px auto;padding:15mm;background:#fff}
-    .toolbar{display:flex;justify-content:flex-end;max-width:210mm;margin:18px auto 0}
-    .toolbar button{min-height:42px;padding:9px 16px;border:0;border-radius:6px;background:#17324d;color:#fff;font:700 10pt Arial,Helvetica,sans-serif;cursor:pointer}
-    .intestazione{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px;padding-bottom:13px;border-bottom:1px solid #d1d5db}
-    h1{margin:0;color:#17324d;font-size:17pt;line-height:1.2;text-transform:uppercase}
-    h2{margin:0 0 9px;color:#17324d;font-size:10.5pt;line-height:1.2;text-transform:uppercase}
-    h3{margin:0 0 7px;color:#17324d;font-size:9pt;text-transform:uppercase;letter-spacing:.04em}
-    p{margin:5px 0}
-    .sottotitolo{margin-top:5px;color:#6b7280;font-size:9pt}
-    .numero-ddt{min-width:205px;padding:10px 12px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;text-align:right}
-    .numero-ddt span{display:block;color:#6b7280;font-size:8pt;font-weight:700;text-transform:uppercase}
-    .numero-ddt strong{display:block;margin:3px 0;color:#17324d;font-size:14pt}
-    .numero-ddt small{color:#6b7280;font-size:8pt}
-    .schede{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
-    .scheda{min-width:0;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;break-inside:avoid;page-break-inside:avoid}
-    .scheda.destinazione{border-left:3px solid #17324d}
-    .ragione-sociale{font-size:10pt;font-weight:700}
-    .indirizzo{margin-top:7px}
-    .etichetta-destinazione{display:inline-block;margin-bottom:6px;color:#17324d;font-size:8pt;font-weight:800;letter-spacing:.04em}
-    .dato{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #e5e7eb;padding:5px 0}
-    .dato span{color:#6b7280}
-    .dato strong{text-align:right;overflow-wrap:anywhere}
-    .merce{margin-top:14px}
-    .tabella-wrap{overflow:visible}
-    table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:9pt}
-    th,td{padding:6px 8px;border:1px solid #d1d5db;vertical-align:top;overflow-wrap:anywhere}
-    th{background:#e5e7eb;color:#17324d;font-size:8pt;font-weight:700;text-align:left;text-transform:uppercase}
-    .col-pos{width:5%}.col-code{width:15%}.col-description{width:34%}.col-quantity{width:12%}.col-unit{width:8%}.col-trace{width:26%}
-    .posizione,.codice,.unita-misura,.tracciabilita{text-align:center}
-    .numero{text-align:right;white-space:nowrap}
-    tbody tr:nth-child(even){background:#f9fafb}
-    .logistica{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;margin-top:4px}
-    .dati-spedizione{margin-top:14px}
-    .note{margin-top:12px;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;break-inside:avoid;page-break-inside:avoid}
-    .firme{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px;break-inside:avoid;page-break-inside:avoid}
-    .firma{min-height:32mm;padding:10px;border:1px solid #d1d5db;border-radius:5px;background:#fff;break-inside:avoid;page-break-inside:avoid}
-    .spazio-firma{height:15mm;margin-top:10mm;border-bottom:1px solid #9ca3af}
-    .firma small{display:block;margin-top:5px;color:#6b7280;font-size:8pt}
+    html{background:#e9edf2;color:#152b43;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;font-size:9pt;line-height:1.2}
+    .toolbar{display:flex;justify-content:flex-end;width:min(196mm,calc(100% - 24px));margin:12px auto}
+    .toolbar button{min-height:42px;padding:9px 16px;border:0;border-radius:6px;background:#07569a;color:#fff;font:700 10pt Arial,Helvetica,sans-serif;cursor:pointer}
+    main{width:min(196mm,calc(100% - 24px));min-height:280mm;margin:0 auto 20px;padding:4mm;border:1.5px solid #07569a;background:#fff}
+    h1,h2,h3,p{margin:0}
+    .ddt-header{display:grid;grid-template-columns:1.05fr .95fr;min-height:29mm;border-bottom:1.5px solid #07569a}
+    .mittente,.titolo-documento{min-width:0;padding:2mm}
+    .mittente{border-right:1.5px solid #07569a}
+    .etichetta{display:block;color:#07569a;font-size:7pt;font-weight:700;text-transform:uppercase}
+    .nome-mittente{margin:3mm 0 1.5mm;color:#07569a;font-size:11pt;font-weight:800}
+    .titolo-documento h1{color:#07569a;font-size:17pt;line-height:1.05;font-weight:900}
+    .titolo-documento h1 small{font-size:12pt}
+    .riferimento-legale{margin-top:1mm;color:#07569a;font-size:7pt;font-weight:700}
+    .numero-data{display:grid;grid-template-columns:1fr 1fr;gap:2mm;margin-top:4mm;color:#07569a;font-size:9pt;font-weight:700}
+    .numero-data strong{display:block;min-height:5mm;padding-top:1mm;border-bottom:1px solid #07569a}
+    .riga-modulo{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #07569a}
+    .cella{min-width:0;min-height:12mm;padding:1.5mm 2mm;border-right:1px solid #07569a}
+    .cella:last-child{border-right:0}
+    .cella.destinatario{min-height:17mm}
+    .cella.destinatario strong{display:block;margin-top:1mm;font-size:10pt}
+    .cella.destinatario p{margin-top:1mm}
+    .indirizzo{overflow-wrap:anywhere}
+    .riga-metadati{display:grid;grid-template-columns:1.35fr 1.15fr 1fr 1.35fr;border-bottom:1px solid #07569a}
+    .riga-metadati .cella{min-height:12mm}
+    .campo span{display:block;color:#07569a;font-size:7pt;font-weight:700;text-transform:uppercase}
+    .campo strong{display:block;margin-top:1mm;overflow-wrap:anywhere;font-size:9pt}
+    .checkbox-riga{display:flex;flex-wrap:wrap;gap:2mm 5mm;margin-top:1mm;font-size:8pt}
+    .checkbox-riga span::before{display:inline-block;width:3mm;height:3mm;margin-right:1mm;border:1px solid #07569a;content:"";vertical-align:middle}
+    .checkbox-riga .selezionato::before{background:#07569a;box-shadow:inset 0 0 0 1px white}
+    .tabella-wrap{margin-top:0}
+    table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.5pt}
+    col.quantita{width:16%}col.descrizione{width:66%}col.importo{width:18%}
+    th,td{height:8mm;padding:1.2mm 2mm;border:1px solid #07569a;vertical-align:middle;overflow-wrap:anywhere}
+    th{height:7mm;background:#07569a;color:#fff;font-size:8pt;text-align:center;text-transform:uppercase;letter-spacing:.025em}
+    td.quantita,td.importo{text-align:center}
+    td.importo{background:#e4e8ef}
+    tbody tr:nth-child(even):not(.riga-vuota) td{background:#f2f5f9}
+    tbody tr:nth-child(even):not(.riga-vuota) td.importo{background:#dfe5ef}
+    .codice-articolo{display:block;margin-top:1mm;color:#435c77;font-size:7pt}
+    .riga-vuota td{height:8mm}
+    .totali{display:grid;grid-template-columns:.65fr .75fr .7fr 1.4fr 1.1fr}
+    .totali .cella{min-height:12mm}
+    .totale{background:#e4e8ef}
+    .totale strong{color:#07569a;font-size:12pt}
+    .firme{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #07569a}
+    .firma{min-height:20mm;padding:2mm;border-right:1px solid #07569a}
+    .firma:last-child{border-right:0}
+    .firma .spazio-firma{height:9mm;margin-top:2mm;border-bottom:1px solid #07569a}
+    .annotazioni{min-height:15mm;padding:2mm;border-bottom:1px solid #07569a}
+    .annotazioni p{margin-top:1mm}
+    .nota-fondo{padding:1.5mm;color:#07569a;font-size:7pt;font-weight:700}
     .screen-only{display:flex}
     @media(max-width:700px){
       html{background:#fff}
-      main{margin:0;padding:16px}
-      .toolbar{margin:12px 16px}
-      .intestazione{flex-direction:column}
-      .numero-ddt{width:100%;text-align:left}
-      .schede,.logistica{grid-template-columns:1fr}
-      .tabella-wrap{overflow-x:auto}
-      table{min-width:640px}
+      main,.toolbar{width:calc(100% - 16px)}
+      main{min-height:0;margin:0 auto 12px;padding:8px}
+      .ddt-header{grid-template-columns:1fr}
+      .mittente{border-right:0;border-bottom:1px solid #07569a}
+      .titolo-documento h1{font-size:15pt}
+      .cella{padding:6px}
+      .riga-metadati{grid-template-columns:1fr 1fr}
+      .riga-metadati .cella:first-child{grid-column:1/-1}
+      th,td{height:38px;padding:5px;font-size:8pt}
+      th{font-size:7pt}
+      .totali{grid-template-columns:1fr 1fr}
+      .totali .cella{min-height:48px}
       .firme{grid-template-columns:1fr}
+      .firma{min-height:65px;border-right:0;border-bottom:1px solid #07569a}
     }
     @media print{
       html,body{background:#fff}
-      main{max-width:none;margin:0;padding:0}
-      .screen-only{display:none!important}
-      h2{break-after:avoid;page-break-after:avoid}
-      .scheda,.dati-spedizione,.note,.firma{break-inside:avoid;page-break-inside:avoid}
-      table{font-size:9pt}
+      .toolbar{display:none!important}
+      main{width:100%;min-height:0;margin:0;padding:0;border:1.5px solid #07569a}
+      .cella,.firma,.annotazioni{break-inside:avoid;page-break-inside:avoid}
       thead{display:table-header-group}
-      tfoot{display:table-footer-group}
       tr{break-inside:avoid;page-break-inside:avoid}
-      th,td{padding:6px 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      tbody tr:nth-child(even){background:#f9fafb!important}
+      th,td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .riga-vuota{break-inside:avoid;page-break-inside:avoid}
     }
   </style>
 </head>
@@ -1665,75 +1713,102 @@ function scaricaBollaSpedizione() {
   <div class="toolbar screen-only">
     <button type="button" onclick="window.print()">Stampa / Salva PDF</button>
   </div>
-  <main>
-    <header class="intestazione">
-      <div>
-        <h1>Documento di Trasporto - DDT</h1>
-        <p class="sottotitolo">Documento accompagnatorio della merce</p>
-      </div>
-      <div class="numero-ddt">
-        <span>Numero DDT</span>
-        <strong>${escapeHtml(testata.numero_ddt)}</strong>
-        <small>Data: ${escapeHtml(formattaDataDdt(testata.data_ddt))}</small>
-      </div>
+  <main aria-label="Documento di trasporto">
+    <header class="ddt-header">
+      <section class="mittente">
+        <span class="etichetta">Mittente: ditta, dipendenza, domicilio o residenza, P. IVA, codice fiscale</span>
+        <strong class="nome-mittente">${escapeHtml(mittente.ragione_sociale)}</strong>
+        <p>${datiFiscaliMittente}</p>
+        <p class="indirizzo">${indirizzoHtmlDdt(mittente.indirizzo_sede_legale)}</p>
+        ${partenza ? `<p class="indirizzo"><strong>Partenza merce:</strong><br>${indirizzoHtmlDdt(partenza)}</p>` : ""}
+      </section>
+      <section class="titolo-documento">
+        <h1>Documento di trasporto<br><small>(D.d.t.)</small></h1>
+        <p class="riferimento-legale">Documento accompagnatorio della merce</p>
+        <div class="numero-data">
+          <div>N. <strong>${escapeHtml(testata.numero_ddt)}</strong></div>
+          <div>Del <strong>${escapeHtml(formattaDataDdt(testata.data_ddt))}</strong></div>
+        </div>
+      </section>
     </header>
 
-    <div class="schede">
-      <section class="scheda">
-        <h2>Emittente / mittente</h2>
-        <p class="ragione-sociale">${escapeHtml(mittente.ragione_sociale)}</p>
-        ${campo("Partita IVA", mittente.partita_iva)}
-        ${campo("Codice fiscale", mittente.codice_fiscale)}
-        <div class="indirizzo"><strong>Sede legale</strong><br>${indirizzoHtmlDdt(mittente.indirizzo_sede_legale)}</div>
-        ${partenza ? `<div class="indirizzo"><strong>Partenza merce</strong><br>${indirizzoHtmlDdt(partenza)}</div>` : ""}
-        ${mittente.contatti ? `${campo("Telefono", mittente.contatti.telefono)}${campo("Email", mittente.contatti.email)}` : ""}
-      </section>
-      <section class="scheda destinazione">
-        <span class="etichetta-destinazione">DESTINATARIO / LUOGO DI DESTINAZIONE</span>
-        <p class="ragione-sociale">${escapeHtml(destinatario.ragione_sociale)}</p>
-        ${campo("P.IVA / Codice fiscale", destinatario.partita_iva_o_cf)}
-        ${destinatario.indirizzo_consegna ? `<div class="indirizzo"><strong>Sede legale</strong><br>${indirizzoHtmlDdt(destinatario.indirizzo_sede_legale)}</div>` : ""}
-        <div class="indirizzo"><strong>${destinatario.indirizzo_consegna ? "Luogo di destinazione" : "Indirizzo"}</strong><br>${indirizzoHtmlDdt(indirizzoDestinazione)}</div>
-      </section>
+    <section class="riga-modulo" aria-label="Destinatario e luogo di destinazione">
+      <div class="cella destinatario">
+        <span class="etichetta">Destinatario: ditta, dipendenza, domicilio o residenza, P. IVA, codice fiscale</span>
+        <strong>${escapeHtml(destinatario.ragione_sociale)}</strong>
+        <p>${escapeHtml(destinatario.partita_iva_o_cf || "")}</p>
+        <p class="indirizzo">${indirizzoHtmlDdt(destinatario.indirizzo_sede_legale)}</p>
+      </div>
+      <div class="cella destinatario">
+        <span class="etichetta">Luogo di destinazione${destinatarioAlternativo ? "" : " (se diverso dall'indirizzo del destinatario)"}</span>
+        <strong>${escapeHtml(destinatario.ragione_sociale)}</strong>
+        <p class="indirizzo">${indirizzoHtmlDdt(indirizzoDestinazione)}</p>
+      </div>
+    </section>
+
+    <section class="riga-metadati" aria-label="Causale, vettore e riferimento ordine">
+      <div class="cella">${campo("Causale del trasporto", testata.causale_trasporto)}</div>
+      <div class="cella">${campo("Vs. ordine / del", `${ordineCorrente.numero} · ${dataOrdineFormattata}`)}</div>
+      <div class="cella">
+        <span class="etichetta">A mezzo</span>
+        <div class="checkbox-riga">
+          <span class="${logistica.vettore_tipo === "Mittente" ? "selezionato" : ""}">Mittente</span>
+          <span class="${destinatarioNome ? "selezionato" : ""}">Destinatario</span>
+          ${logistica.vettore_tipo === "Vettore Terzo" ? `<span class="selezionato">${escapeHtml(datiVettore?.ragione_sociale || "Vettore")}</span>` : ""}
+        </div>
+      </div>
+      <div class="cella">${campo("Vettore", datiVettore
+        ? `${datiVettore.ragione_sociale} · P.IVA ${datiVettore.partita_iva} · ${datiVettore.indirizzo}`
+        : logistica.vettore_tipo)}</div>
+    </section>
+
+    <div class="tabella-wrap">
+      <table>
+        <colgroup><col class="quantita"><col class="descrizione"><col class="importo"></colgroup>
+        <thead><tr>
+          <th scope="col">Quantità</th>
+          <th scope="col">Descrizione dei beni (natura e qualità)</th>
+          <th scope="col">Importo (€)</th>
+        </tr></thead>
+        <tbody>${righeProdotti}${righeVuote}</tbody>
+      </table>
     </div>
 
-    <section class="merce">
-      <h2>Merce</h2>
-      <div class="tabella-wrap">
-        <table>
-          <colgroup>
-            <col class="col-pos"><col class="col-code"><col class="col-description">
-            <col class="col-quantity"><col class="col-unit"><col class="col-trace">
-          </colgroup>
-          <thead><tr>
-            <th class="posizione" scope="col">Pos.</th>
-            <th class="codice" scope="col">Codice</th>
-            <th scope="col">Descrizione / natura e qualità</th>
-            <th class="numero" scope="col">Quantità</th>
-            <th class="unita-misura" scope="col">U.M.</th>
-            <th class="tracciabilita" scope="col">Lotto / scadenza / n. serie</th>
-          </tr></thead>
-          <tbody>${righeProdotti}</tbody>
-        </table>
+    <section class="totali" aria-label="Dati colli, peso, porto e totale">
+      <div class="cella">${campo("N. colli", logistica.numero_colli)}</div>
+      <div class="cella">${campo("Peso lordo kg", logistica.peso_lordo_kg)}</div>
+      <div class="cella">${campo("Porto", logistica.porto)}</div>
+      <div class="cella">
+        <span class="etichetta">Consegna: mittente / destinatario</span>
+        <div class="checkbox-riga">
+          <span class="${!destinatarioNome ? "selezionato" : ""}">Mittente</span>
+          <span class="${destinatarioNome ? "selezionato" : ""}">Destinatario</span>
+        </div>
       </div>
+      <div class="cella totale">${campo("Totale € (IVA inclusa)", formattaPrezzo(totaleDocumento))}</div>
     </section>
-
-    <section class="scheda dati-spedizione">
-      <h2>Dati spedizione</h2>
-      <div class="logistica">
-        <div>${campo("Causale trasporto", testata.causale_trasporto)}${campo("Inizio trasporto", formattaDataDdt(logistica.data_ora_inizio_trasporto, true))}</div>
-        <div>${campo("Vettore", vettore)}${campo("Porto", logistica.porto || "Non specificato")}</div>
-        <div>${campo("Numero colli", logistica.numero_colli)}${campo("Aspetto esteriore dei beni", logistica.aspetto_esteriore_beni)}</div>
-        <div>${campo("Peso", peso)}</div>
-      </div>
-    </section>
-
-    ${note.note_consegna ? `<section class="note"><strong>Note per la consegna</strong><p>${escapeHtml(note.note_consegna)}</p></section>` : ""}
     <section class="firme" aria-label="Spazi per le firme">
-      <div class="firma"><h3>Firma mittente</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
-      <div class="firma"><h3>Firma vettore</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
-      <div class="firma"><h3>Firma destinatario</h3><div class="spazio-firma"></div><small>Nome, firma e data</small></div>
+      <div class="firma">
+        <span class="etichetta">Data e ora del ritiro</span>
+        <strong>${escapeHtml(formattaDataDdt(logistica.data_ora_inizio_trasporto, true))}</strong>
+        <p class="codice-articolo">Aspetto: ${escapeHtml(logistica.aspetto_esteriore_beni || "—")}</p>
+        <div class="spazio-firma"></div>
+      </div>
+      <div class="firma">
+        <span class="etichetta">Peso e firma del conducente</span>
+        <strong>${escapeHtml(logistica.peso_lordo_kg !== undefined ? `${logistica.peso_lordo_kg} kg` : " ")}</strong>
+        <div class="spazio-firma"></div>
+      </div>
+      <div class="firma">
+        <span class="etichetta">Firma del destinatario</span>
+        <div class="spazio-firma"></div>
+      </div>
     </section>
+    <section class="annotazioni">
+      <span class="etichetta">Annotazioni e variazioni</span>
+      <p>${escapeHtml(note.note_consegna || "")}</p>
+    </section>
+    <p class="nota-fondo">Documento di trasporto generato dal gestionale · Conservare una copia del documento.</p>
   </main>
 </body>
 </html>`;
@@ -1908,8 +1983,18 @@ function selezionaSuggerimento(indice) {
 function apriDettaglio(prodotto) {
   chiudiSuggerimenti();
   elementi.detailContent.replaceChildren();
-  if (prodotto.fotoUrl) {
-    elementi.detailContent.append(creaImmagine(prodotto.fotoUrl, "detail-photo", `Foto di ${prodotto.nome}`));
+  const fotoUrls = [
+    prodotto.fotoUrl,
+    ...(Array.isArray(prodotto.fotoUrls) ? prodotto.fotoUrls : [])
+  ].filter((url, indice, urls) => typeof url === "string" && url && urls.indexOf(url) === indice);
+  if (fotoUrls.length) {
+    const galleria = document.createElement("div");
+    galleria.className = "detail-photo-gallery";
+    fotoUrls.forEach((url, indice) => {
+      const etichetta = indice === 0 ? "principale" : `aggiuntiva ${indice}`;
+      galleria.append(creaImmagine(url, "detail-photo", `Foto ${etichetta} di ${prodotto.nome}`));
+    });
+    elementi.detailContent.append(galleria);
   } else {
     const placeholder = creaPlaceholder();
     placeholder.style.height = "170px";
@@ -2021,10 +2106,10 @@ async function ridimensionaFoto(file) {
   return blob;
 }
 
-async function caricaFotoCloudinary(file, idProdotto) {
+async function caricaFotoCloudinary(file, idProdotto, nomeCloudinary = idProdotto) {
   const fotoRidimensionata = await ridimensionaFoto(file);
   const dati = new FormData();
-  dati.append("file", fotoRidimensionata, `${idProdotto}.jpg`);
+  dati.append("file", fotoRidimensionata, `${nomeCloudinary}.jpg`);
   dati.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
   const controller = new AbortController();
@@ -2067,40 +2152,73 @@ async function caricaFoto(file, idProdotto) {
 }
 
 function abbinaFotoAProdotti(files) {
-  const prodottiPerId = new Map(prodotti.map((prodotto) => [prodotto.id, prodotto]));
-  const gruppiPerId = new Map();
+  const prodottiPerCodice = new Map();
+  for (const prodotto of prodotti) {
+    const codice = typeof prodotto.codice === "string" ? prodotto.codice : "";
+    if (!codice) continue;
+    const corrispondenze = prodottiPerCodice.get(codice) || [];
+    corrispondenze.push(prodotto);
+    prodottiPerCodice.set(codice, corrispondenze);
+  }
+  const gruppiPerCodice = new Map();
   const scartate = [];
+  const conflitti = [];
 
   for (const file of files) {
     if (!file.type.startsWith("image/")) {
       scartate.push(`${file.name}: non è un’immagine.`);
       continue;
     }
-    const corrispondenza = file.name.match(/^(\d+)\.[^.]+$/);
-    if (!corrispondenza) {
-      scartate.push(`${file.name}: il nome deve essere un ID, per esempio 235.jpg.`);
+    const conSuffisso = file.name.match(/^(.+)_([1-9]\d*)\.png$/i);
+    const senzaSuffisso = file.name.match(/^(.+)\.png$/i);
+    if (!conSuffisso && !senzaSuffisso) {
+      scartate.push(`${file.name}: usa il codice esatto, per esempio CAR-0001.png o CAR-0007_2.png.`);
       continue;
     }
-    const id = corrispondenza[1].replace(/^0+(?=\d)/, "");
-    const prodotto = prodottiPerId.get(id);
-    if (!prodotto) {
-      scartate.push(`${file.name}: nessun prodotto con ID ${id}.`);
+    const codice = conSuffisso ? conSuffisso[1] : senzaSuffisso[1];
+    const numeroFoto = conSuffisso ? Number(conSuffisso[2]) : null;
+    const corrispondenze = prodottiPerCodice.get(codice) || [];
+    if (corrispondenze.length === 0) {
+      scartate.push(`${file.name}: nessun prodotto con codice identico ${codice}.`);
       continue;
     }
-    const gruppo = gruppiPerId.get(id) || [];
-    gruppo.push({ file, prodotto });
-    gruppiPerId.set(id, gruppo);
+    if (corrispondenze.length > 1) {
+      scartate.push(`${file.name}: il codice ${codice} identifica più prodotti; abbinamento dubbio.`);
+      continue;
+    }
+    const gruppo = gruppiPerCodice.get(codice) || [];
+    gruppo.push({ file, prodotto: corrispondenze[0], numeroFoto });
+    gruppiPerCodice.set(codice, gruppo);
   }
 
   const abbinate = [];
-  for (const [id, gruppo] of gruppiPerId) {
-    if (gruppo.length > 1) {
-      scartate.push(`Più immagini selezionate per l’ID ${id}; nessuna è stata caricata.`);
+  for (const [codice, gruppo] of gruppiPerCodice) {
+    const senzaSuffisso = gruppo.filter(({ numeroFoto }) => numeroFoto === null);
+    const numeri = gruppo
+      .filter(({ numeroFoto }) => numeroFoto !== null)
+      .map(({ numeroFoto }) => numeroFoto);
+    if ((senzaSuffisso.length && gruppo.length > 1)
+      || new Set(numeri).size !== numeri.length
+      || (senzaSuffisso.length === 0 && !numeri.includes(1))) {
+      scartate.push(`${codice}: nomi foto ambigui o manca la foto principale _1; nessun file caricato.`);
       continue;
     }
-    abbinate.push(gruppo[0]);
+    const ordinate = [...gruppo].sort((a, b) => (a.numeroFoto ?? 0) - (b.numeroFoto ?? 0));
+    if (haFotoProdotto(gruppo[0].prodotto)) {
+      conflitti.push(codice);
+      continue;
+    }
+    abbinate.push({ prodotto: gruppo[0].prodotto, files: ordinate });
   }
-  return { abbinate, scartate };
+  return { abbinate, scartate, conflitti };
+}
+
+function haFotoProdotto(prodotto) {
+  return Boolean(
+    prodotto?.fotoUrl
+    || prodotto?.fotoPath
+    || (Array.isArray(prodotto?.fotoUrls) && prodotto.fotoUrls.some((url) => typeof url === "string" && url))
+  );
 }
 
 async function importaFotoInBlocco(files) {
@@ -2110,29 +2228,27 @@ async function importaFotoInBlocco(files) {
   }
   if (!files.length) return;
 
-  const { abbinate, scartate } = abbinaFotoAProdotti(files);
+  const { abbinate, scartate, conflitti } = abbinaFotoAProdotti(files);
   if (!abbinate.length) {
-    const dettagli = scartate.slice(0, 4).join(" ");
-    mostraMessaggio(elementi.appMessage, `Nessuna foto abbinabile. ${dettagli}`);
-    elementi.photoBatchProgress.textContent = `Ignorate ${scartate.length} foto`;
-    elementi.photoBatchFiles.value = "";
-    return;
-  }
-
-  const giaConFoto = abbinate.filter(({ prodotto }) => prodotto.fotoUrl).length;
-  if (giaConFoto && !window.confirm(`${giaConFoto} prodotti hanno già una foto. I nuovi collegamenti la sostituiranno, ma le vecchie immagini resteranno su Cloudinary. Vuoi continuare?`)) {
-    mostraMessaggio(elementi.appMessage, "Operazione annullata", "avviso");
+    const dettagli = [...scartate, ...conflitti.map((codice) => `${codice}: foto già presente; non sovrascritta.`)]
+      .slice(0, 4)
+      .join(" ");
+    mostraMessaggio(elementi.appMessage, `Nessuna nuova foto da caricare. ${dettagli}`, "avviso");
+    elementi.photoBatchProgress.textContent = `Ignorati ${scartate.length}; già presenti ${conflitti.length}`;
     elementi.photoBatchFiles.value = "";
     return;
   }
 
   impostaBarraOccupata(true);
   elementi.photoBatchButton.disabled = true;
-  elementi.photoBatchProgress.textContent = `Foto elaborate 0/${abbinate.length}`;
+  elementi.photoBatchProgress.textContent = `Prodotti elaborati 0/${abbinate.length}`;
   mostraMessaggio(elementi.appMessage, "");
   let prossima = 0;
   let completate = 0;
-  let caricate = 0;
+  let prodottiAggiornati = 0;
+  let fotoCaricate = 0;
+  const conflittiRemoti = [];
+  const saltateRemotamente = [];
   const errori = [];
 
   async function lavora() {
@@ -2140,20 +2256,54 @@ async function importaFotoInBlocco(files) {
       const corrente = abbinate[prossima];
       prossima += 1;
       try {
-        const { file, prodotto } = corrente;
-        const foto = await caricaFotoCloudinary(file, prodotto.id);
-        await setDoc(doc(db, "prodotti", prodotto.id), {
-          fotoUrl: foto.fotoUrl,
-          fotoPath: foto.fotoPath,
-          aggiornatoIl: serverTimestamp()
-        }, { merge: true });
-        caricate += 1;
+        const { files: fotoProdotto, prodotto } = corrente;
+        const riferimento = doc(db, "prodotti", prodotto.id);
+        const remoto = await getDocFromServer(riferimento);
+        if (!remoto.exists()) {
+          saltateRemotamente.push(`${prodotto.codice}: record non presente su Firestore.`);
+          continue;
+        }
+        if (haFotoProdotto(remoto.data())) {
+          conflittiRemoti.push(prodotto.codice);
+          continue;
+        }
+
+        const urls = [];
+        for (let indice = 0; indice < fotoProdotto.length; indice += 1) {
+          const voce = fotoProdotto[indice];
+          const suffissoCloudinary = indice === 0 ? "" : `-${indice + 1}`;
+          const foto = await caricaFotoCloudinary(
+            voce.file,
+            prodotto.id,
+            `${prodotto.id}${suffissoCloudinary}`
+          );
+          urls.push(foto.fotoUrl);
+        }
+
+        const aggiornato = await runTransaction(db, async (transazione) => {
+          const documento = await transazione.get(riferimento);
+          if (!documento.exists() || haFotoProdotto(documento.data())) return false;
+          transazione.set(riferimento, {
+            fotoUrl: urls[0],
+            fotoUrls: urls.slice(1),
+            fotoPath: "",
+            aggiornatoIl: serverTimestamp()
+          }, { merge: true });
+          return true;
+        });
+        if (aggiornato) {
+          prodottiAggiornati += 1;
+          fotoCaricate += urls.length;
+        } else {
+          conflittiRemoti.push(prodotto.codice);
+        }
       } catch (errore) {
-        console.error(`Errore durante l’importazione della foto ${corrente.file.name}:`, errore);
-        errori.push(`${corrente.file.name}: ${errore.message || "caricamento non riuscito"}`);
+        const file = corrente.files.map(({ file }) => file.name).join(", ");
+        console.error(`Errore durante l’importazione delle foto ${file}:`, errore);
+        errori.push(`${file}: ${errore.message || "caricamento non riuscito"}`);
       } finally {
         completate += 1;
-        elementi.photoBatchProgress.textContent = `Foto elaborate ${completate}/${abbinate.length}`;
+        elementi.photoBatchProgress.textContent = `Prodotti elaborati ${completate}/${abbinate.length}`;
       }
     }
   }
@@ -2161,10 +2311,16 @@ async function importaFotoInBlocco(files) {
   try {
     const numeroLavoratori = Math.min(3, abbinate.length);
     await Promise.all(Array.from({ length: numeroLavoratori }, () => lavora()));
-    const riepilogo = `Foto collegate: ${caricate}/${abbinate.length}. Ignorate: ${scartate.length}. Errori: ${errori.length}.`;
-    const dettagli = [...scartate, ...errori].slice(0, 4).join(" ");
-    mostraMessaggio(elementi.appMessage, [riepilogo, dettagli].filter(Boolean).join(" "), errori.length || scartate.length ? "avviso" : "successo");
-    elementi.photoBatchProgress.textContent = `Completato: ${caricate}/${abbinate.length}`;
+    const riepilogo = `Foto collegate: ${fotoCaricate} su ${prodottiAggiornati} prodotti. Già presenti e non sovrascritte: ${conflitti.length + conflittiRemoti.length}. Ignorate: ${scartate.length + saltateRemotamente.length}. Errori: ${errori.length}.`;
+    const dettagli = [
+      ...scartate,
+      ...conflitti.map((codice) => `${codice}: foto già presente; non sovrascritta.`),
+      ...conflittiRemoti.map((codice) => `${codice}: foto già presente su Firestore; non sovrascritta.`),
+      ...saltateRemotamente,
+      ...errori
+    ].slice(0, 6).join(" ");
+    mostraMessaggio(elementi.appMessage, [riepilogo, dettagli].filter(Boolean).join(" "), errori.length || scartate.length || conflitti.length || conflittiRemoti.length || saltateRemotamente.length ? "avviso" : "successo");
+    elementi.photoBatchProgress.textContent = `Completato: ${fotoCaricate} foto; già presenti ${conflitti.length + conflittiRemoti.length}; ignorate ${scartate.length + saltateRemotamente.length}; errori ${errori.length}`;
   } finally {
     impostaBarraOccupata(false);
     elementi.photoBatchFiles.value = "";
